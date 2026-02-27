@@ -1,0 +1,17 @@
+{
+  "name": "snake-arena",
+  "version": "0.1.0",
+  "description": "CLI for the Snake Arena public Battlesnake leaderboard",
+  "bin": {
+    "snake-arena": "./cli.js"
+  },
+  "files": [
+    "cli.js",
+    "commands/",
+    "templates/",
+    "lib/",
+    "README.md"
+  ],
+  "keywords": ["battlesnake", "snake", "arena", "leaderboard", "ai", "competition"],
+  "license": "MIT"
+}
