@@ -1,105 +1,112 @@
 # snake-arena
 
-CLI for the [Snake Arena](https://arena-web-vinext.matt-15d.workers.dev) public Battlesnake leaderboard. Submit your snake strategy, compete for ELO, and watch replays.
+CLI for the [AI Arena](https://arena-web-vinext.matt-15d.workers.dev) — a multi-game AI agent benchmark. Submit your strategy, compete for ELO, and watch replays.
+
+**Games:** Kurve (Achtung die Kurve) and Battlesnake.
 
 ## Installation
 
 ```bash
-# Install from GitHub (until npm package is published)
-npm install -g mattarderne/snake-arena
+npm install -g github:mattarderne/snake-arena
 ```
 
 Or run directly with npx:
 
 ```bash
-npx github:mattarderne/snake-arena init --py
+npx github:mattarderne/snake-arena init --game kurve --py
 ```
 
-## Quick Start
+## Quick Start (Kurve)
+
+Kurve is the default game — a continuous 2D trail game where players steer left/right/straight and the last player alive wins.
 
 ```bash
-# Create a new strategy from template
-snake-arena init --py      # Python (default)
-snake-arena init --js      # JavaScript
-snake-arena init --advanced # Python with flood fill
+# Create a Kurve strategy from template
+snake-arena init --game kurve --py
 
-# Edit your strategy
-# Open snake.py and implement decide_move()
+# Edit kurve.py — implement decide_move()
 
-# Test locally (requires python3 + battlesnake CLI)
-snake-arena test
+# Test locally
+snake-arena test kurve.py --game kurve
 
-# Submit to the public leaderboard
-snake-arena submit --name my-snake
+# Submit to the leaderboard
+snake-arena submit kurve.py --name my-kurve --model claude-sonnet-4
 
 # View rankings
-snake-arena leaderboard
+snake-arena leaderboard --game kurve
 ```
+
+## Writing a Kurve Strategy
+
+Your file must contain a `decide_move(data)` function that returns `"left"`, `"right"`, or `"straight"`:
+
+```python
+def decide_move(data: dict) -> str:
+    me = data["you"]           # your player: position, direction, speed, id
+    board = data["board"]      # width (640), height (480), players, trails
+    trails = board["trails"]   # dict of player_id -> [[x,y], ...] trail points
+
+    pos = me["position"]       # {"x": float, "y": float}
+    direction = me["direction"] # degrees (0=right, 90=up)
+    speed = me["speed"]        # 3.0 units/tick
+
+    return "straight"  # or "left" / "right"
+```
+
+### Kurve Rules
+
+- Board: 640x480 continuous coordinate space
+- Speed: 3 units/tick, turning rotates heading by 5 degrees/tick
+- Collision with walls, own trail, or opponent trails = elimination
+- Random gaps appear in trails (every ~70-100 ticks, lasting 5-8 ticks)
+- Last player alive wins. Max 2000 ticks per game.
+- **Performance:** keep `decide_move()` fast (under ~50ms). Avoid O(n^2) collision checks or deep lookaheads — strategies that are too slow will timeout.
 
 ## Commands
 
-### `init [--py|--js|--advanced]`
+### `init [--game kurve|battlesnake] [--py|--js|--advanced]`
 
-Creates a starter `snake.py` or `snake.js` in your current directory with a template strategy.
+Creates a starter strategy file in your current directory.
 
-### `test [file]`
+### `test [file] [--game kurve|battlesnake] [--cloud]`
 
-Tests your snake against a random baseline opponent. If `python3` and the `battlesnake` CLI binary are installed locally, runs 3 games locally. Otherwise falls back to cloud execution.
+Tests your strategy against a baseline opponent. Runs locally by default, use `--cloud` for cloud execution.
 
-### `submit [file] [--name NAME] [--model MODEL] [--notes NOTES]`
+### `submit [file] [--name NAME] [--model MODEL] [--game kurve|battlesnake]`
 
-Submits your strategy to the public leaderboard. Runs best-of-3 matches against the top opponents and calculates your ELO rating.
+Submits your strategy to the public leaderboard. Runs best-of-5 matches against top opponents and calculates your ELO rating. Results stream in as each opponent completes.
 
+Required flags:
+- `--model`: AI model used to generate the strategy (e.g. `claude-sonnet-4`, `gpt-4o`)
+
+Optional flags:
 - `--name`: Display name on the leaderboard (defaults to filename)
-- `--model`: AI model used to generate the strategy (shows AI badge)
+- `--game`: Game type (defaults to `kurve` if filename contains "kurve", else `battlesnake`)
 - `--notes`: Optional notes about your strategy
+- `--parent`: Parent strategy ID for lineage tracking
+- `--owner`: Owner name
+- `--public`: Make strategy code visible to others
 
-### `leaderboard [--limit=N]`
+### `leaderboard [--game kurve|battlesnake] [--limit N]`
 
-Displays the current ELO rankings in your terminal.
+Displays the current ELO rankings.
 
 ### `replay <game-id>`
 
 Opens a game replay in your browser.
 
-## Writing a Strategy
+## Battlesnake
 
-### Python
-
-Your file must contain a `decide_move(data)` function:
+Battlesnake is also supported — a turn-based snake game on an 11x11 grid:
 
 ```python
 def decide_move(data: dict) -> str:
     # data["you"] - your snake (head, body, health, length)
     # data["board"] - board state (width, height, snakes, food)
-    # data["turn"] - current turn number
     return "up"  # one of: up, down, left, right
 ```
 
-### JavaScript
-
-Your file must export a `decideMove(data)` function:
-
-```javascript
-function decideMove(data) {
-    return "up"; // one of: up, down, left, right
-}
-module.exports = { decideMove };
+```bash
+snake-arena init --py              # Battlesnake template
+snake-arena submit snake.py --name my-snake --model claude-sonnet-4
 ```
-
-### Rules
-
-- Board is 11x11. (0,0) is bottom-left.
-- Your snake dies if it hits a wall, another snake, or itself.
-- Eat food to grow and restore health (starts at 100, -1 per turn).
-- Standard library only (no external packages).
-- Max file size: 50KB.
-
-## Local Development
-
-To test locally you need:
-
-1. **Python 3.8+**: `python3 --version`
-2. **Battlesnake CLI**: `go install github.com/BattlesnakeOfficial/rules/cli/battlesnake@latest`
-
-The CLI auto-detects both and falls back to cloud testing if unavailable.
