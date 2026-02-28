@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Snake Arena CLI
+ * AI Arena CLI (snake-arena)
  *
- * Submit and test Battlesnake strategies against a public leaderboard.
+ * Submit and test AI strategies across multiple games.
+ * Currently supports: Battlesnake, Kurve (Achtung die Kurve).
  *
  * Usage:
- *   npx snake-arena init [--js|--py]
- *   npx snake-arena test [file]
- *   npx snake-arena submit [file]
- *   npx snake-arena leaderboard
+ *   npx snake-arena init [--js|--py] [--kurve]
+ *   npx snake-arena test [file] [--game battlesnake|kurve]
+ *   npx snake-arena submit [file] [--game battlesnake|kurve] [--model MODEL] [--parent ID]
+ *   npx snake-arena leaderboard [--game battlesnake|kurve|all]
  *   npx snake-arena replay <id>
  */
 
@@ -17,25 +18,38 @@ const { init } = require("./commands/init");
 const { test } = require("./commands/test");
 const { submit } = require("./commands/submit");
 const { leaderboard } = require("./commands/leaderboard");
+const { login } = require("./commands/login");
 
 const args = process.argv.slice(2);
 const command = args[0];
 
 const HELP = `
-  snake-arena - Public Battlesnake Leaderboard
+  AI Arena - Multi-Game AI Agent Benchmark
+
+  Games:
+    battlesnake    Turn-based snake on 11×11 grid (default)
+    kurve          Achtung die Kurve - trails on continuous 2D board
 
   Commands:
-    init [--js|--py]      Scaffold a new snake strategy
-    test [file]           Test your snake locally or in the cloud
-    submit [file]         Submit your snake to the leaderboard
-    leaderboard           Show current rankings
-    replay <id>           Open a game replay in the browser
+    init [--js|--py] [--kurve]          Scaffold a new strategy
+    test [file] [--game TYPE]           Test your strategy
+    submit [file] [--game TYPE]         Submit to the leaderboard
+      --name NAME                       Display name
+      --model MODEL                     AI model used (e.g. claude-sonnet-4)
+      --parent ID                       Parent strategy (for evolution lineage)
+      --tool TOOL                       Tool used (e.g. claude-code, cursor)
+      --public                          Make code publicly visible
+    leaderboard [--game TYPE|all]       Show rankings
+    replay <id>                         Open a game replay
+    login                               Authenticate via GitHub (for ranked play)
 
   Examples:
     npx snake-arena init --py
+    npx snake-arena init --kurve
     npx snake-arena test snake.py
-    npx snake-arena submit snake.py --name "my-snake"
-    npx snake-arena leaderboard
+    npx snake-arena submit snake.py --name "my-snake" --model claude-sonnet-4
+    npx snake-arena submit kurve.py --game kurve --parent flood-fill_2be787f9
+    npx snake-arena leaderboard --game all
 `;
 
 async function main() {
@@ -55,6 +69,9 @@ async function main() {
       break;
     case "replay":
       await replay(args.slice(1));
+      break;
+    case "login":
+      await login(args.slice(1));
       break;
     case "--help":
     case "-h":
@@ -78,7 +95,6 @@ async function replay(args) {
   const { API_BASE } = require("./lib/api");
   const url = `${API_BASE}/replay/${id}`;
   console.log(`Opening replay: ${url}`);
-  // Open in browser
   const { exec } = require("child_process");
   const opener =
     process.platform === "darwin"

@@ -1,5 +1,7 @@
 /**
- * `snake-arena submit` - Submit a snake to the public leaderboard.
+ * `snake-arena submit` - Submit a strategy to the public leaderboard.
+ *
+ * Supports both Battlesnake and Kurve games with AI metadata tracking.
  */
 
 const fs = require("fs");
@@ -16,6 +18,10 @@ function parseArgs(args) {
   let name = null;
   let model = null;
   let notes = null;
+  let parent = null;
+  let tool = null;
+  let game = null;
+  let isPublic = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--name" && args[i + 1]) {
@@ -24,22 +30,35 @@ function parseArgs(args) {
       model = args[++i];
     } else if (args[i] === "--notes" && args[i + 1]) {
       notes = args[++i];
+    } else if (args[i] === "--parent" && args[i + 1]) {
+      parent = args[++i];
+    } else if (args[i] === "--tool" && args[i + 1]) {
+      tool = args[++i];
+    } else if (args[i] === "--game" && args[i + 1]) {
+      game = args[++i];
+    } else if (args[i] === "--public") {
+      isPublic = true;
     } else if (!args[i].startsWith("-")) {
       filePath = args[i];
     }
   }
 
-  return { filePath, name, model, notes };
+  return { filePath, name, model, notes, parent, tool, game, isPublic };
 }
 
 async function submit(args) {
-  let { filePath, name, model, notes } = parseArgs(args);
+  let { filePath, name, model, notes, parent, tool, game, isPublic } = parseArgs(args);
 
   // Auto-detect file
   if (!filePath) {
-    if (fs.existsSync("snake.py")) filePath = "snake.py";
-    else if (fs.existsSync("snake.js")) filePath = "snake.js";
-    else {
+    if (game === "kurve") {
+      if (fs.existsSync("kurve.py")) filePath = "kurve.py";
+      else if (fs.existsSync("kurve.js")) filePath = "kurve.js";
+    } else {
+      if (fs.existsSync("snake.py")) filePath = "snake.py";
+      else if (fs.existsSync("snake.js")) filePath = "snake.js";
+    }
+    if (!filePath) {
       console.error(
         "No strategy file found. Specify a file or run `snake-arena init` first."
       );
@@ -65,16 +84,24 @@ async function submit(args) {
     process.exit(1);
   }
 
+  // Auto-detect game from filename if not specified
+  if (!game) {
+    game = filePath.includes("kurve") ? "kurve" : "battlesnake";
+  }
+
   if (!name) {
-    // Use filename without extension as name
     name = filePath.replace(/\.(py|js)$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
   }
 
-  const metadata = {};
+  const metadata = { game };
   if (model) metadata.model = model;
   if (notes) metadata.notes = notes;
+  if (parent) metadata.parent_id = parent;
+  if (tool) metadata.tool = tool;
+  if (isPublic) metadata.public_code = true;
 
-  console.log(`Submitting ${filePath} as "${name}" (${language})...`);
+  const gameName = game === "kurve" ? "Kurve" : "Battlesnake";
+  console.log(`Submitting ${filePath} as "${name}" (${language}, ${gameName})...`);
   console.log("Running games against leaderboard opponents...");
   console.log("");
 
@@ -96,13 +123,14 @@ async function submit(args) {
     }
 
     const result = response.data;
+    const rd = result.rating_deviation ? ` ± ${result.rating_deviation}` : "";
 
     console.log("  Results:");
     console.log(`  ────────────────────────────────────`);
     console.log(
-      `  ELO:    ${result.elo}${result.provisional ? " (provisional)" : ""}`
+      `  ELO:    ${result.elo}${rd}${result.provisional ? " (provisional)" : ""}`
     );
-    console.log(`  Rank:   #${result.rank}`);
+    console.log(`  Rank:   #${result.rank} (${gameName})`);
     console.log(`  Record: ${result.record}`);
     console.log(`  ────────────────────────────────────`);
 
@@ -123,7 +151,16 @@ async function submit(args) {
     }
 
     console.log("");
-    console.log("  View leaderboard: npx snake-arena leaderboard");
+
+    // Tweet intent
+    const rank = result.rank;
+    const elo = result.elo;
+    const tweetText = encodeURIComponent(
+      `My ${gameName} bot ranked #${rank} with ${elo} ELO on AI Arena! 🎮🤖\n\nhttps://arena-web-vinext.matt-15d.workers.dev`
+    );
+    console.log(`  Share: https://twitter.com/intent/tweet?text=${tweetText}`);
+    console.log("");
+    console.log(`  View leaderboard: npx snake-arena leaderboard${game !== "battlesnake" ? " --game " + game : ""}`);
   } catch (err) {
     clearInterval(spinner);
     process.stdout.write("\r");
