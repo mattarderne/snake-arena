@@ -4,8 +4,9 @@
  * Supports both Battlesnake and Kurve games with AI metadata tracking.
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
-const { submitStrategy } = require("../lib/api");
+const { submitStrategy, getStatus } = require("../lib/api");
 
 function detectLanguage(filePath) {
   if (filePath.endsWith(".py")) return "python";
@@ -21,6 +22,7 @@ function parseArgs(args) {
   let parent = null;
   let tool = null;
   let game = null;
+  let owner = null;
   let isPublic = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -36,6 +38,8 @@ function parseArgs(args) {
       tool = args[++i];
     } else if (args[i] === "--game" && args[i + 1]) {
       game = args[++i];
+    } else if (args[i] === "--owner" && args[i + 1]) {
+      owner = args[++i];
     } else if (args[i] === "--public") {
       isPublic = true;
     } else if (!args[i].startsWith("-")) {
@@ -43,11 +47,83 @@ function parseArgs(args) {
     }
   }
 
-  return { filePath, name, model, notes, parent, tool, game, isPublic };
+  return { filePath, name, model, notes, parent, tool, game, owner, isPublic };
+}
+
+function displayResult(result, gameName, game, ownershipToken) {
+  if (!result.strategy_id || result.elo == null) {
+    console.error(`Error: Unexpected response from server`);
+    if (result.detail) console.error(`  Detail: ${result.detail}`);
+    process.exit(1);
+  }
+  const rd = result.rating_deviation ? ` \u00b1 ${result.rating_deviation}` : "";
+
+  console.log("  Results:");
+  console.log(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+  console.log(
+    `  ELO:    ${result.elo}${rd}${result.provisional ? " (provisional)" : ""}`
+  );
+  console.log(`  Rank:   #${result.rank} (${gameName})`);
+  console.log(`  Record: ${result.record}`);
+  console.log(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+  console.log("");
+  console.log(`  Ownership token: ${ownershipToken} (save this to prove ownership)`);
+
+  if (result.matches && result.matches.length > 0) {
+    console.log("");
+    console.log("  Match results:");
+    for (const match of result.matches) {
+      const icon =
+        match.series_result === "win"
+          ? "W"
+          : match.series_result === "loss"
+            ? "L"
+            : "D";
+      console.log(
+        `    ${icon} vs ${match.opponent_name} (${match.wins}-${match.losses}-${match.draws})`
+      );
+    }
+  }
+
+  // Show replay links
+  if (result.replays && result.replays.length > 0) {
+    console.log("");
+    console.log("  Watch replays:");
+    const byOpp = {};
+    for (const rId of result.replays) {
+      const vsIdx = rId.indexOf("_vs_");
+      if (vsIdx === -1) continue;
+      const rest = rId.slice(vsIdx + 4);
+      const lastU = rest.lastIndexOf("_");
+      const oppId = lastU > 0 ? rest.slice(0, lastU) : rest;
+      if (!byOpp[oppId]) byOpp[oppId] = [];
+      byOpp[oppId].push(rId);
+    }
+    for (const [oppId, rIds] of Object.entries(byOpp)) {
+      const match = (result.matches || []).find(m => m.opponent_id === oppId);
+      const oppName = match ? match.opponent_name : oppId;
+      console.log(`    vs ${oppName}:`);
+      for (let i = 0; i < rIds.length; i++) {
+        console.log(`      Match ${i + 1}: npx github:mattarderne/snake-arena replay ${rIds[i]}`);
+      }
+    }
+  }
+
+  console.log("");
+
+  const rank = result.rank;
+  const elo = result.elo;
+  const tweetText = encodeURIComponent(
+    `My ${gameName} bot ranked #${rank} with ${elo} ELO on AI Arena!\n\nhttps://arena-web-vinext.matt-15d.workers.dev`
+  );
+  console.log(`  Share: https://twitter.com/intent/tweet?text=${tweetText}`);
+  console.log("");
+  console.log(`  Strategy: https://arena-web-vinext.matt-15d.workers.dev/strategy/${result.strategy_id}`);
+  console.log(`  Leaderboard: npx github:mattarderne/snake-arena leaderboard${game !== "battlesnake" ? " --game " + game : ""}`);
 }
 
 async function submit(args) {
-  let { filePath, name, model, notes, parent, tool, game, isPublic } = parseArgs(args);
+  let { filePath, name, model, notes, parent, tool, game, owner, isPublic } = parseArgs(args);
 
   // Auto-detect file
   if (!filePath) {
@@ -60,7 +136,7 @@ async function submit(args) {
     }
     if (!filePath) {
       console.error(
-        "No strategy file found. Specify a file or run `snake-arena init` first."
+        "No strategy file found. Specify a file or run `npx github:mattarderne/snake-arena init` first."
       );
       process.exit(1);
     }
@@ -74,6 +150,13 @@ async function submit(args) {
   const language = detectLanguage(filePath);
   if (!language) {
     console.error("File must end with .py or .js");
+    process.exit(1);
+  }
+
+  if (!model) {
+    console.error(
+      "Error: --model is required. Specify the AI model used (e.g. --model claude-sonnet-4)"
+    );
     process.exit(1);
   }
 
@@ -93,103 +176,88 @@ async function submit(args) {
     name = filePath.replace(/\.(py|js)$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
   }
 
+  // Generate ownership token
+  const ownershipToken = crypto.randomBytes(6).toString("hex");
+
   const metadata = { game };
-  if (model) metadata.model = model;
+  metadata.model = model;
+  metadata.ownership_token = ownershipToken;
   if (notes) metadata.notes = notes;
   if (parent) metadata.parent_id = parent;
   if (tool) metadata.tool = tool;
-  if (isPublic) metadata.public_code = true;
+  if (owner) metadata.owner = owner;
+  if (isPublic) metadata.is_public = true;
 
   const gameName = game === "kurve" ? "Kurve" : "Battlesnake";
   console.log(`Submitting ${filePath} as "${name}" (${language}, ${gameName})...`);
-  console.log("Running games against leaderboard opponents...");
   console.log("");
 
-  // Show spinner
   const spinChars = ["|", "/", "-", "\\"];
   let spinIdx = 0;
-  const spinner = setInterval(() => {
-    process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Playing matches...`);
-  }, 200);
 
   try {
+    // Phase 1: Submit — returns job_id immediately
+    process.stdout.write(`  ${spinChars[0]} Submitting...`);
     const response = await submitStrategy(code, language, name, metadata);
-    clearInterval(spinner);
-    process.stdout.write("\r");
+    process.stdout.write("\r\x1B[K");
 
-    if (response.data.error) {
-      console.error(`Error: ${response.data.error}`);
+    if (response.status >= 400 || response.data.error) {
+      let msg = response.data?.error || (typeof response.data === "string" ? response.data : `HTTP ${response.status}`);
+      const retryAfter = response.headers?.["retry-after"];
+      if (response.status === 429 && retryAfter) {
+        msg = `${msg} (retry after ${retryAfter}s)`;
+      }
+      console.error(`Error: ${msg}`);
       process.exit(1);
     }
 
-    const result = response.data;
-    const rd = result.rating_deviation ? ` ± ${result.rating_deviation}` : "";
-
-    console.log("  Results:");
-    console.log(`  ────────────────────────────────────`);
-    console.log(
-      `  ELO:    ${result.elo}${rd}${result.provisional ? " (provisional)" : ""}`
-    );
-    console.log(`  Rank:   #${result.rank} (${gameName})`);
-    console.log(`  Record: ${result.record}`);
-    console.log(`  ────────────────────────────────────`);
-
-    if (result.matches && result.matches.length > 0) {
-      console.log("");
-      console.log("  Match results:");
-      for (const match of result.matches) {
-        const icon =
-          match.series_result === "win"
-            ? "W"
-            : match.series_result === "loss"
-              ? "L"
-              : "D";
-        console.log(
-          `    ${icon} vs ${match.opponent_name} (${match.wins}-${match.losses}-${match.draws})`
-        );
-      }
+    const { job_id } = response.data;
+    if (!job_id) {
+      // Fallback: server returned synchronous result (old Modal version)
+      displayResult(response.data, gameName, game, ownershipToken);
+      return;
     }
 
-    // Show replay links
-    if (result.replays && result.replays.length > 0) {
-      console.log("");
-      console.log("  Watch replays:");
-      // Group by opponent
-      const byOpp = {};
-      for (const rId of result.replays) {
-        const vsIdx = rId.indexOf("_vs_");
-        if (vsIdx === -1) continue;
-        const rest = rId.slice(vsIdx + 4);
-        const lastU = rest.lastIndexOf("_");
-        const oppId = lastU > 0 ? rest.slice(0, lastU) : rest;
-        if (!byOpp[oppId]) byOpp[oppId] = [];
-        byOpp[oppId].push(rId);
+    console.log("  Match results:");
+
+    // Phase 2: Poll for progress every 3s
+    let lastMatchCount = 0;
+    while (true) {
+      await new Promise(r => setTimeout(r, 3000));
+
+      const statusResponse = await getStatus(job_id);
+      const job = statusResponse.data;
+
+      if (job.error && job.status === "failed") {
+        process.stdout.write("\r\x1B[K");
+        console.error(`\n  Error: ${job.error}`);
+        process.exit(1);
       }
-      for (const [oppId, rIds] of Object.entries(byOpp)) {
-        const match = (result.matches || []).find(m => m.opponent_id === oppId);
-        const oppName = match ? match.opponent_name : oppId;
-        console.log(`    vs ${oppName}:`);
-        for (let i = 0; i < rIds.length; i++) {
-          console.log(`      Game ${i + 1}: npx snake-arena replay ${rIds[i]}`);
-        }
+
+      // Print new matches incrementally
+      const matches = job.matches || [];
+      for (const m of matches.slice(lastMatchCount)) {
+        process.stdout.write("\r\x1B[K");
+        const icon = m.series_result === "win" ? "W" : m.series_result === "loss" ? "L" : "D";
+        console.log(`    ${icon} vs ${m.opponent_name} (${m.wins}-${m.losses}-${m.draws})`);
+        lastMatchCount++;
       }
+
+      if (job.status === "complete") {
+        process.stdout.write("\r\x1B[K");
+        console.log("");
+        displayResult(job.result, gameName, game, ownershipToken);
+        break;
+      }
+
+      // Spinner with progress
+      const progress = job.completed_opponents != null && job.total_opponents
+        ? ` (${job.completed_opponents}/${job.total_opponents} opponents)`
+        : "";
+      process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Playing matches...${progress}`);
     }
-
-    console.log("");
-
-    // Tweet intent
-    const rank = result.rank;
-    const elo = result.elo;
-    const tweetText = encodeURIComponent(
-      `My ${gameName} bot ranked #${rank} with ${elo} ELO on AI Arena! 🎮🤖\n\nhttps://arena-web-vinext.matt-15d.workers.dev`
-    );
-    console.log(`  Share: https://twitter.com/intent/tweet?text=${tweetText}`);
-    console.log("");
-    console.log(`  Strategy: https://arena-web-vinext.matt-15d.workers.dev/strategy/${result.strategy_id}`);
-    console.log(`  Leaderboard: npx snake-arena leaderboard${game !== "battlesnake" ? " --game " + game : ""}`);
   } catch (err) {
-    clearInterval(spinner);
-    process.stdout.write("\r");
+    process.stdout.write("\r\x1B[K");
     console.error(`Submission failed: ${err.message}`);
     process.exit(1);
   }
