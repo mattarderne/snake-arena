@@ -19,6 +19,7 @@ const { test } = require("./commands/test");
 const { submit } = require("./commands/submit");
 const { leaderboard } = require("./commands/leaderboard");
 const { login } = require("./commands/login");
+const replay = require("./commands/replay");
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -27,7 +28,7 @@ const HELP = `
   AI Arena - Multi-Game AI Agent Benchmark
 
   Games:
-    battlesnake    Turn-based snake on 11×11 grid (default)
+    battlesnake    Turn-based snake on 11x11 grid (default)
     kurve          Achtung die Kurve - trails on continuous 2D board
 
   Commands:
@@ -40,7 +41,7 @@ const HELP = `
       --tool TOOL                       Tool used (e.g. claude-code, cursor)
       --public                          Make code publicly visible
     leaderboard [--game TYPE|all]       Show rankings
-    replay <id>                         Open a game replay
+    replay <id>                         Open a game replay in browser
     login                               Authenticate via GitHub (for ranked play)
 
   Examples:
@@ -50,6 +51,7 @@ const HELP = `
     npx snake-arena submit snake.py --name "my-snake" --model claude-sonnet-4
     npx snake-arena submit kurve.py --game kurve --parent flood-fill_2be787f9
     npx snake-arena leaderboard --game all
+    npx snake-arena replay arena-v2-test_2be787f9d427_vs_flood-fill_2be787f9d427_0
 `;
 
 async function main() {
@@ -68,6 +70,7 @@ async function main() {
       await leaderboard(args.slice(1));
       break;
     case "replay":
+    case "watch":
       await replay(args.slice(1));
       break;
     case "login":
@@ -84,25 +87,6 @@ async function main() {
       console.log(HELP);
       process.exit(1);
   }
-}
-
-async function replay(args) {
-  const id = args[0];
-  if (!id) {
-    console.error("Usage: snake-arena replay <game-id>");
-    process.exit(1);
-  }
-  const { API_BASE } = require("./lib/api");
-  const url = `${API_BASE}/replay/${id}`;
-  console.log(`Opening replay: ${url}`);
-  const { exec } = require("child_process");
-  const opener =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "start"
-        : "xdg-open";
-  exec(`${opener} ${url}`);
 }
 
 main().catch((err) => {

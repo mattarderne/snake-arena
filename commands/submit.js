@@ -150,6 +150,31 @@ async function submit(args) {
       }
     }
 
+    // Show replay links
+    if (result.replays && result.replays.length > 0) {
+      console.log("");
+      console.log("  Watch replays:");
+      // Group by opponent
+      const byOpp = {};
+      for (const rId of result.replays) {
+        const vsIdx = rId.indexOf("_vs_");
+        if (vsIdx === -1) continue;
+        const rest = rId.slice(vsIdx + 4);
+        const lastU = rest.lastIndexOf("_");
+        const oppId = lastU > 0 ? rest.slice(0, lastU) : rest;
+        if (!byOpp[oppId]) byOpp[oppId] = [];
+        byOpp[oppId].push(rId);
+      }
+      for (const [oppId, rIds] of Object.entries(byOpp)) {
+        const match = (result.matches || []).find(m => m.opponent_id === oppId);
+        const oppName = match ? match.opponent_name : oppId;
+        console.log(`    vs ${oppName}:`);
+        for (let i = 0; i < rIds.length; i++) {
+          console.log(`      Game ${i + 1}: npx snake-arena replay ${rIds[i]}`);
+        }
+      }
+    }
+
     console.log("");
 
     // Tweet intent
@@ -160,7 +185,8 @@ async function submit(args) {
     );
     console.log(`  Share: https://twitter.com/intent/tweet?text=${tweetText}`);
     console.log("");
-    console.log(`  View leaderboard: npx snake-arena leaderboard${game !== "battlesnake" ? " --game " + game : ""}`);
+    console.log(`  Strategy: https://arena-web-vinext.matt-15d.workers.dev/strategy/${result.strategy_id}`);
+    console.log(`  Leaderboard: npx snake-arena leaderboard${game !== "battlesnake" ? " --game " + game : ""}`);
   } catch (err) {
     clearInterval(spinner);
     process.stdout.write("\r");
