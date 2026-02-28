@@ -1,1 +1,18 @@
 __pycache__/
+
+# Common local secret/config files
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.pkcs8
+*.secret
+*.token
+secrets/
+credentials.json
+service-account*.json

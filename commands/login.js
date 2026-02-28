@@ -24,8 +24,21 @@ function loadToken() {
 }
 
 function saveToken(data) {
-  fs.mkdirSync(TOKEN_DIR, { recursive: true });
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(data, null, 2));
+  fs.mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(TOKEN_DIR, 0o700);
+  } catch {}
+
+  const serialized = JSON.stringify(data, null, 2);
+  if (process.platform === "win32") {
+    fs.writeFileSync(TOKEN_FILE, serialized);
+    return;
+  }
+
+  fs.writeFileSync(TOKEN_FILE, serialized, { mode: 0o600 });
+  try {
+    fs.chmodSync(TOKEN_FILE, 0o600);
+  } catch {}
 }
 
 async function login(args) {
