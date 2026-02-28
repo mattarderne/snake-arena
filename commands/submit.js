@@ -220,17 +220,42 @@ async function submit(args) {
 
     console.log("  Match results:");
 
-    // Phase 2: Poll for progress every 3s
+    // Phase 2: Poll for progress every 3s, timeout after 5 minutes
     let lastMatchCount = 0;
+    const maxPolls = 100; // 100 × 3s = 5 minutes
+    let polls = 0;
     while (true) {
       await new Promise(r => setTimeout(r, 3000));
+      polls++;
 
-      const statusResponse = await getStatus(job_id);
-      const job = statusResponse.data;
+      let job;
+      try {
+        const statusResponse = await getStatus(job_id);
+        job = statusResponse.data;
+      } catch (err) {
+        if (polls >= maxPolls) {
+          process.stdout.write("\r\x1B[K");
+          console.error(`\n  Error: Timed out waiting for results (${err.message})`);
+          process.exit(1);
+        }
+        process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Waiting for backend...`);
+        continue;
+      }
 
-      if (job.error && job.status === "failed") {
+      // Job not yet created on backend — keep waiting
+      if (job.error === "Job not found") {
+        if (polls >= 20) { // 60s without job file = something is wrong
+          process.stdout.write("\r\x1B[K");
+          console.error(`\n  Error: Backend never started processing this job`);
+          process.exit(1);
+        }
+        process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Waiting for backend to start...`);
+        continue;
+      }
+
+      if (job.status === "failed") {
         process.stdout.write("\r\x1B[K");
-        console.error(`\n  Error: ${job.error}`);
+        console.error(`\n  Error: ${job.error || "Unknown backend error"}`);
         process.exit(1);
       }
 
@@ -248,6 +273,12 @@ async function submit(args) {
         console.log("");
         displayResult(job.result, gameName, game, ownershipToken);
         break;
+      }
+
+      if (polls >= maxPolls) {
+        process.stdout.write("\r\x1B[K");
+        console.error(`\n  Error: Timed out waiting for results after 5 minutes`);
+        process.exit(1);
       }
 
       // Spinner with progress
