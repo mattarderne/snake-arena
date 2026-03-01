@@ -125,6 +125,20 @@ function displayResult(result, gameName, game, ownershipToken) {
 async function submit(args) {
   let { filePath, name, model, notes, parent, tool, game, owner, isPublic } = parseArgs(args);
 
+  // Auto-read parent from .snake-arena-parent.json if --parent not provided
+  const parentFile = ".snake-arena-parent.json";
+  if (!parent && fs.existsSync(parentFile)) {
+    try {
+      const parentData = JSON.parse(fs.readFileSync(parentFile, "utf-8"));
+      if (parentData.parent_id) {
+        parent = parentData.parent_id;
+        console.log(`  Lineage: evolving from ${parentData.parent_name || parentData.parent_id}`);
+      }
+    } catch {
+      // Malformed file — ignore
+    }
+  }
+
   // Auto-detect file
   if (!filePath) {
     if (game === "kurve") {
@@ -215,6 +229,7 @@ async function submit(args) {
     if (!job_id) {
       // Fallback: server returned synchronous result (old Modal version)
       displayResult(response.data, gameName, game, ownershipToken);
+      if (fs.existsSync(parentFile)) fs.unlinkSync(parentFile);
       return;
     }
 
@@ -272,6 +287,7 @@ async function submit(args) {
         process.stdout.write("\r\x1B[K");
         console.log("");
         displayResult(job.result, gameName, game, ownershipToken);
+        if (fs.existsSync(parentFile)) fs.unlinkSync(parentFile);
         break;
       }
 

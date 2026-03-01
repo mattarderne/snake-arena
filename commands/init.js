@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getLeaderboard, getStrategyCode } = require("../lib/api");
 
 async function init(args) {
   let language = "python"; // default
@@ -51,11 +52,51 @@ async function init(args) {
 
   const gameName = game === "kurve" ? "Kurve" : "Battlesnake";
   console.log(`Created ${outputFile} (${gameName} strategy)`);
+
+  // Fetch a random public strategy as inspiration
+  let inspiration = null;
+  try {
+    const lbResponse = await getLeaderboard(50, 0, game);
+    const strategies = (lbResponse.data?.strategies || []).filter(
+      (s) => s.metadata?.is_public === true
+    );
+    if (strategies.length > 0) {
+      const pick = strategies[Math.floor(Math.random() * strategies.length)];
+      const codeResponse = await getStrategyCode(pick.id);
+      if (codeResponse.status < 400 && codeResponse.data?.code) {
+        const ext = language === "javascript" ? "js" : "py";
+        const inspirationFile = game === "kurve" ? `kurve_inspiration.${ext}` : `snake_inspiration.${ext}`;
+        fs.writeFileSync(inspirationFile, codeResponse.data.code);
+        fs.writeFileSync(
+          ".snake-arena-parent.json",
+          JSON.stringify({
+            parent_id: pick.id,
+            parent_name: pick.name,
+            parent_elo: pick.elo,
+          }, null, 2)
+        );
+        inspiration = { name: pick.name, rank: strategies.indexOf(pick) + 1, elo: pick.elo, file: inspirationFile };
+      }
+    }
+  } catch {
+    // Network failure — silently skip inspiration
+  }
+
+  if (inspiration) {
+    console.log("");
+    console.log(`  Inspiration: ${inspiration.name} (#${inspiration.rank}, ${inspiration.elo} ELO)`);
+    console.log(`  See ${inspiration.file} for their approach.`);
+    console.log(`  Your submission will automatically track lineage from this strategy.`);
+  }
+
   console.log("");
   console.log("Next steps:");
   console.log(`  1. Edit ${outputFile} with your strategy`);
-  console.log(`  2. Test:   npx snake-arena test ${outputFile}${game === "kurve" ? " --game kurve" : ""}`);
-  console.log(`  3. Submit: npx snake-arena submit ${outputFile} --name your-${game === "kurve" ? "kurve" : "snake"}${game === "kurve" ? " --game kurve" : ""}`);
+  console.log(`  2. Test:   npx github:mattarderne/snake-arena test ${outputFile}  (Docker cloud-parity local by default)`);
+  if (game === "kurve") {
+    console.log(`  2b. Data:  npx github:mattarderne/snake-arena sample-data --game kurve`);
+  }
+  console.log(`  3. Submit: npx github:mattarderne/snake-arena submit ${outputFile} --name your-${game === "kurve" ? "kurve" : "snake"}${game === "kurve" ? " --game kurve" : ""}`);
 }
 
 module.exports = { init };
