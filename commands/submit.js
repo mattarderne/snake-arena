@@ -8,6 +8,22 @@ const crypto = require("crypto");
 const fs = require("fs");
 const { submitStrategy, getStatus } = require("../lib/api");
 
+const USAGE = `
+  Usage: snake-arena submit [file] [flags]
+
+  Submit a strategy to the public leaderboard for ranked play.
+
+  Flags:
+    --name NAME       Display name for your strategy
+    --model MODEL     AI model used (required, e.g. claude-sonnet-4)
+    --game TYPE       Game type: battlesnake or kurve
+    --parent ID       Parent strategy ID (for evolution lineage)
+    --tool TOOL       Tool used (e.g. claude-code, cursor)
+    --owner OWNER     Owner identifier
+    --notes NOTES     Notes about this submission
+    --public          Make code publicly visible
+`;
+
 function detectLanguage(filePath) {
   if (filePath.endsWith(".py")) return "python";
   if (filePath.endsWith(".js")) return "javascript";
@@ -82,6 +98,13 @@ function displayResult(result, gameName, game, ownershipToken) {
       console.log(
         `    ${icon} vs ${match.opponent_name} (${match.wins}-${match.losses}-${match.draws})`
       );
+      if (icon === "L" && result.replays) {
+        // Find a replay for this opponent
+        const oppReplay = result.replays.find(r => r.includes(match.opponent_id));
+        if (oppReplay) {
+          console.log(`      See: npx snake-arena replay ${oppReplay} --summary`);
+        }
+      }
     }
   }
 
@@ -123,6 +146,11 @@ function displayResult(result, gameName, game, ownershipToken) {
 }
 
 async function submit(args) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(USAGE);
+    return;
+  }
+
   let { filePath, name, model, notes, parent, tool, game, owner, isPublic } = parseArgs(args);
 
   // Auto-read parent from .snake-arena-parent.json if --parent not provided
@@ -219,10 +247,24 @@ async function submit(args) {
       let msg = response.data?.error || (typeof response.data === "string" ? response.data : `HTTP ${response.status}`);
       const retryAfter = response.headers?.["retry-after"];
       if (response.status === 429 && retryAfter) {
-        msg = `${msg} (retry after ${retryAfter}s)`;
+        const mins = Math.ceil(parseInt(retryAfter, 10) / 60);
+        msg = `Rate limited — retry in ${mins} minute${mins !== 1 ? "s" : ""}`;
       }
       console.error(`Error: ${msg}`);
       process.exit(1);
+    }
+
+    // Show rate limit info
+    const remaining = response.headers?.["x-ratelimit-remaining"];
+    const limit = response.headers?.["x-ratelimit-limit"];
+    const reset = response.headers?.["x-ratelimit-reset"];
+    if (remaining != null && limit != null) {
+      let resetStr = "";
+      if (reset) {
+        const resetMins = Math.ceil(parseInt(reset, 10) / 60);
+        resetStr = `, resets in ${resetMins}m`;
+      }
+      console.log(`  Submitted (${remaining}/${limit} submits remaining${resetStr})`);
     }
 
     const { job_id } = response.data;

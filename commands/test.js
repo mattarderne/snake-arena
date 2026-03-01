@@ -2,13 +2,28 @@
  * `snake-arena test` - Test a strategy locally or via cloud.
  *
  * Supports both Battlesnake and Kurve games.
+ * After a cloud test, opens the replay in a local viewer (or --cloud for web viewer).
  */
 
 const fs = require("fs");
 const path = require("path");
+const { exec } = require("child_process");
 const { detectPython, detectBattlesnake } = require("../lib/detect");
 const { runLocalGame } = require("../lib/local-runner");
 const { testStrategy } = require("../lib/api");
+
+const WEBSITE_BASE = "https://arena-web-vinext.matt-15d.workers.dev";
+
+const USAGE = `
+  Usage: snake-arena test [file] [flags]
+
+  Test a strategy locally or via cloud. Opens a replay viewer after cloud tests.
+
+  Flags:
+    --game TYPE       Game type: battlesnake or kurve
+    --cloud           Open replay in web viewer instead of locally
+    --vs ID           Test against a specific strategy by ID
+`;
 
 function detectLanguage(filePath) {
   if (filePath.endsWith(".py")) return "python";
@@ -19,20 +34,80 @@ function detectLanguage(filePath) {
 function parseArgs(args) {
   let filePath = null;
   let game = null;
+  let cloud = false;
+  let vs = null;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--game" && args[i + 1]) {
       game = args[++i];
+    } else if (args[i] === "--cloud") {
+      cloud = true;
+    } else if (args[i] === "--vs" && args[i + 1]) {
+      vs = args[++i];
     } else if (!args[i].startsWith("-")) {
       filePath = args[i];
     }
   }
 
-  return { filePath, game };
+  return { filePath, game, cloud, vs };
+}
+
+/**
+ * Open the local replay viewer with replay data saved to a temp JSON file.
+ * Falls back to cloud viewer if --cloud is set.
+ */
+function openReplayViewer(replayData, cloud) {
+  if (cloud) {
+    // Cloud viewer: would need a replay ID, but test results aren't saved to the API.
+    // For now just note it's local only.
+    console.log("  (Cloud viewer not available for test results — replays are not persisted)");
+    return;
+  }
+
+  // Save replay JSON to a temp file
+  const os = require("os");
+  const tmpDir = path.join(os.tmpdir(), "snake-arena");
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const replayFile = path.join(tmpDir, `replay-${Date.now()}.json`);
+  fs.writeFileSync(replayFile, JSON.stringify(replayData));
+
+  // Build an HTML file that inlines the replay data
+  const viewerTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "templates", "replay-viewer.html"),
+    "utf-8"
+  );
+
+  // Inject replay data as a script tag before closing </body>
+  const dataScript = `<script id="replay-data" type="application/json">${JSON.stringify(replayData)}</script>`;
+  const html = viewerTemplate.replace("</body>", `${dataScript}\n</body>`);
+
+  const htmlFile = path.join(tmpDir, `replay-${Date.now()}.html`);
+  fs.writeFileSync(htmlFile, html);
+
+  console.log(`  Replay saved: ${replayFile}`);
+  console.log(`  Opening viewer...`);
+
+  // Open in browser
+  const platform = process.platform;
+  const cmd =
+    platform === "darwin" ? `open "${htmlFile}"` :
+    platform === "win32" ? `start "${htmlFile}"` :
+    `xdg-open "${htmlFile}"`;
+
+  exec(cmd, (err) => {
+    if (err) {
+      console.log(`  Could not open browser. Open manually: ${htmlFile}`);
+    }
+  });
 }
 
 async function test(args) {
-  let { filePath, game } = parseArgs(args);
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(USAGE);
+    return;
+  }
+
+  let { filePath, game, cloud, vs } = parseArgs(args);
 
   // Auto-detect file
   if (!filePath) {
@@ -75,7 +150,9 @@ async function test(args) {
     console.log("");
 
     const code = fs.readFileSync(filePath, "utf-8");
-    const response = await testStrategy(code, language, game);
+    const opts = {};
+    if (vs) opts.opponentId = vs;
+    const response = await testStrategy(code, language, game, opts);
 
     if (response.data.error) {
       console.error(`Error: ${response.data.error}`);
@@ -85,7 +162,14 @@ async function test(args) {
     const result = response.data;
     const icon =
       result.winner === "sub" ? "WIN" : result.winner === "draw" ? "DRAW" : "LOSS";
-    console.log(`  Result: ${icon} (${result.turns} ticks) vs Random Kurve opponent`);
+    const oppName = result.opponent_name || (vs ? vs : "Random Kurve opponent");
+    console.log(`  Result: ${icon} (${result.turns} ticks) vs ${oppName}`);
+
+    // Open replay viewer if we have replay data
+    if (result.replay_data) {
+      openReplayViewer(result.replay_data, cloud);
+    }
+
     if (icon === "WIN") {
       console.log(`\nLooking good! Try: npx snake-arena submit ${filePath} --game kurve`);
     }
@@ -136,7 +220,9 @@ async function test(args) {
     console.log("");
 
     const code = fs.readFileSync(filePath, "utf-8");
-    const response = await testStrategy(code, language, game);
+    const bsOpts = {};
+    if (vs) bsOpts.opponentId = vs;
+    const response = await testStrategy(code, language, game, bsOpts);
 
     if (response.data.error) {
       console.error(`Error: ${response.data.error}`);
@@ -146,7 +232,8 @@ async function test(args) {
     const result = response.data;
     const icon =
       result.winner === "sub" ? "WIN" : result.winner === "draw" ? "DRAW" : "LOSS";
-    console.log(`  Result: ${icon} (${result.turns} turns) vs Random opponent`);
+    const bsOppName = result.opponent_name || (vs ? vs : "Random opponent");
+    console.log(`  Result: ${icon} (${result.turns} turns) vs ${bsOppName}`);
   }
 }
 

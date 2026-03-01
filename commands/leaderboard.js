@@ -6,7 +6,21 @@
 
 const { getLeaderboard } = require("../lib/api");
 
+const USAGE = `
+  Usage: snake-arena leaderboard [flags]
+
+  Display current rankings.
+
+  Flags:
+    --game TYPE       Filter by game: battlesnake, kurve, or all
+    --limit=N         Number of results (default: 20)
+`;
+
 async function leaderboard(args) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(USAGE);
+    return;
+  }
   const limit = parseInt(
     args.find((a) => a.startsWith("--limit="))?.split("=")[1] || "20",
     10

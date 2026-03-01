@@ -8,7 +8,24 @@ const fs = require("fs");
 const path = require("path");
 const { getLeaderboard, getStrategyCode } = require("../lib/api");
 
+const USAGE = `
+  Usage: snake-arena init [flags]
+
+  Scaffold a new strategy file with optional inspiration from public strategies.
+
+  Flags:
+    --js, --javascript   Generate JavaScript template (default: Python)
+    --py, --python       Generate Python template
+    --kurve              Generate Kurve strategy (default: Battlesnake)
+    --advanced           Use advanced Battlesnake template
+`;
+
 async function init(args) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(USAGE);
+    return;
+  }
+
   let language = "python"; // default
   let advanced = false;
   let game = "battlesnake"; // default
@@ -94,7 +111,7 @@ async function init(args) {
   console.log(`  1. Edit ${outputFile} with your strategy`);
   console.log(`  2. Test:   npx github:mattarderne/snake-arena test ${outputFile}  (Docker cloud-parity local by default)`);
   if (game === "kurve") {
-    console.log(`  2b. Data:  npx github:mattarderne/snake-arena sample-data --game kurve`);
+    console.log(`  2b. Data:  npx github:mattarderne/snake-arena replay <any-id> --summary`);
   }
   console.log(`  3. Submit: npx github:mattarderne/snake-arena submit ${outputFile} --name your-${game === "kurve" ? "kurve" : "snake"}${game === "kurve" ? " --game kurve" : ""}`);
 }
