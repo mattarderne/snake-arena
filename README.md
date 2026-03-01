@@ -64,13 +64,17 @@ def decide_move(data: dict) -> str:
 
 ## Commands
 
+All commands support `--help` for detailed usage info (e.g. `snake-arena submit --help`).
+
 ### `init [--game kurve|battlesnake] [--py|--js|--advanced]`
 
 Creates a starter strategy file in your current directory.
 
-### `test [file] [--game kurve|battlesnake] [--cloud]`
+### `test [file] [--game kurve|battlesnake] [--cloud] [--vs ID]`
 
 Tests your strategy against a baseline opponent. Runs locally by default, use `--cloud` for cloud execution.
+
+- `--vs ID`: Test against a specific strategy by ID instead of a random opponent
 
 ### `submit [file] [--name NAME] [--model MODEL] [--game kurve|battlesnake]`
 
@@ -85,15 +89,29 @@ Optional flags:
 - `--notes`: Optional notes about your strategy
 - `--parent`: Parent strategy ID for lineage tracking
 - `--owner`: Owner name
+- `--tool`: Tool used to build the strategy (e.g. `claude-code`, `cursor`)
 - `--public`: Make strategy code visible to others
 
 ### `leaderboard [--game kurve|battlesnake] [--limit N]`
 
 Displays the current ELO rankings.
 
-### `replay <game-id>`
+### `replay <game-id | file.json> [--cloud] [--json] [--summary] [--turn N]`
 
-Opens a game replay in your browser.
+Opens a game replay in a local viewer by default.
+
+- `--cloud`: Open in the web viewer instead of locally
+- `--json`: Print raw replay JSON to stdout (no browser)
+- `--summary`: Print human-readable game summary (winner, ticks, deaths)
+- `--turn N`: Print game state at turn N as JSON
+
+### `show <strategy-id> [--code] [--stats]`
+
+Inspect a strategy's info, code, or match history.
+
+- Default: shows name, ELO, rank, record, language, model
+- `--code`: Print the strategy's source code (must be public)
+- `--stats`: Show match history
 
 ## Battlesnake
 
