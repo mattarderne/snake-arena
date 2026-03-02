@@ -1,7 +1,5 @@
 const fs = require("fs");
-const path = require("path");
-const { exec } = require("child_process");
-const { API_BASE } = require("../lib/api");
+const { openReplayViewer, openBrowser } = require("../lib/viewer");
 
 const WEBSITE_BASE = "https://arena-web-vinext.matt-15d.workers.dev";
 
@@ -190,7 +188,8 @@ module.exports = async function replay(args) {
   // If it's a local JSON file, open with local viewer
   if (id.endsWith(".json") && fs.existsSync(id)) {
     console.log(`\n  Opening local replay: ${id}`);
-    openLocalViewer(id);
+    const replayData = JSON.parse(fs.readFileSync(id, "utf-8"));
+    openReplayViewer(replayData);
     return;
   }
 
@@ -214,46 +213,5 @@ module.exports = async function replay(args) {
     process.exit(1);
   }
 
-  const os = require("os");
-  const tmpDir = path.join(os.tmpdir(), "snake-arena");
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const replayFile = path.join(tmpDir, `replay-${Date.now()}.json`);
-  fs.writeFileSync(replayFile, JSON.stringify(response.data));
-  console.log(`  Saved to: ${replayFile}`);
-  openLocalViewer(replayFile);
+  openReplayViewer(response.data);
 };
-
-function openLocalViewer(jsonPath) {
-  const os = require("os");
-  const replayData = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
-
-  const viewerTemplate = fs.readFileSync(
-    path.join(__dirname, "..", "templates", "replay-viewer.html"),
-    "utf-8"
-  );
-
-  const dataScript = `<script id="replay-data" type="application/json">${JSON.stringify(replayData)}</script>`;
-  const html = viewerTemplate.replace("</body>", `${dataScript}\n</body>`);
-
-  const tmpDir = path.join(os.tmpdir(), "snake-arena");
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const htmlFile = path.join(tmpDir, `viewer-${Date.now()}.html`);
-  fs.writeFileSync(htmlFile, html);
-
-  console.log(`  Opening viewer...\n`);
-  openBrowser(htmlFile);
-}
-
-function openBrowser(url) {
-  const platform = process.platform;
-  const cmd =
-    platform === "darwin" ? `open "${url}"` :
-    platform === "win32" ? `start "${url}"` :
-    `xdg-open "${url}"`;
-
-  exec(cmd, (err) => {
-    if (err) {
-      console.log(`  Could not open browser. Open manually: ${url}\n`);
-    }
-  });
-}

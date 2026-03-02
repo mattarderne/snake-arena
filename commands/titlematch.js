@@ -1,7 +1,5 @@
 const { triggerTitleMatch, getTitleMatchLatest, getReplay } = require("../lib/api");
-const fs = require("fs");
-const path = require("path");
-const { exec } = require("child_process");
+const { openMatchViewer } = require("../lib/viewer");
 
 module.exports = async function titlematch(args) {
   if (args.includes("--help") || args.includes("-h")) {
@@ -61,7 +59,7 @@ module.exports = async function titlematch(args) {
   displayResult(matchData);
 
   if (shouldWatch && matchData?.replays?.length > 0) {
-    await openMatchViewer(matchData.replays);
+    await fetchAndOpenMatchViewer(matchData.replays);
   }
 };
 
@@ -105,7 +103,7 @@ function displayResult(data) {
   console.log();
 }
 
-async function openMatchViewer(replayIds) {
+async function fetchAndOpenMatchViewer(replayIds) {
   console.log(`  Fetching ${replayIds.length} replays for match viewer...`);
 
   const replays = [];
@@ -127,31 +125,8 @@ async function openMatchViewer(replayIds) {
     return;
   }
 
-  console.log(`  Loaded ${replays.length} games. Opening viewer...`);
-
-  const os = require("os");
-  const viewerTemplate = fs.readFileSync(
-    path.join(__dirname, "..", "templates", "replay-viewer.html"),
-    "utf-8"
-  );
-
-  const dataScript = `<script id="replay-match-data" type="application/json">${JSON.stringify(replays)}</script>`;
-  const html = viewerTemplate.replace("</body>", `${dataScript}\n</body>`);
-
-  const tmpDir = path.join(os.tmpdir(), "snake-arena");
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const htmlFile = path.join(tmpDir, `match-${Date.now()}.html`);
-  fs.writeFileSync(htmlFile, html);
-
-  const platform = process.platform;
-  const cmd =
-    platform === "darwin" ? `open "${htmlFile}"` :
-    platform === "win32" ? `start "${htmlFile}"` :
-    `xdg-open "${htmlFile}"`;
-
-  exec(cmd, (err) => {
-    if (err) console.log(`  Could not open browser. Open manually: ${htmlFile}\n`);
-  });
+  console.log(`  Loaded ${replays.length} games.`);
+  openMatchViewer(replays);
   console.log();
 }
 

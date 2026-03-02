@@ -369,7 +369,7 @@ function draw() {
   const gt = +els.gapThreshold.value;
   const opacity = +els.trailOpacity.value;
 
-  // Draw trails
+  // Trail rendering — keep in sync with web/app/components/KurveReplayViewer.tsx
   for (const [pid, points] of Object.entries(trails)) {
     if (pid === "p0" && !els.trailP0.checked) continue;
     if (pid === "p1" && !els.trailP1.checked) continue;

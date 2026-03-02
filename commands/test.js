@@ -7,12 +7,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const { exec } = require("child_process");
 const { detectPython, detectBattlesnake } = require("../lib/detect");
 const { runLocalGame } = require("../lib/local-runner");
 const { testStrategy } = require("../lib/api");
-
-const WEBSITE_BASE = "https://arena-web-vinext.matt-15d.workers.dev";
+const { openReplayViewer } = require("../lib/viewer");
 
 const USAGE = `
   Usage: snake-arena test [file] [flags]
@@ -72,53 +70,12 @@ function parseArgs(args) {
   return { filePath, game, cloud, view, vs };
 }
 
-/**
- * Open the local replay viewer with replay data saved to a temp JSON file.
- * Falls back to cloud viewer if --cloud is set.
- */
-function openReplayViewer(replayData, cloud) {
+function viewReplay(replayData, cloud) {
   if (cloud) {
-    // Cloud viewer: would need a replay ID, but test results aren't saved to the API.
-    // For now just note it's local only.
     console.log("  (Cloud viewer not available for test results — replays are not persisted)");
     return;
   }
-
-  // Save replay JSON to a temp file
-  const os = require("os");
-  const tmpDir = path.join(os.tmpdir(), "snake-arena");
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const replayFile = path.join(tmpDir, `replay-${Date.now()}.json`);
-  fs.writeFileSync(replayFile, JSON.stringify(replayData));
-
-  // Build an HTML file that inlines the replay data
-  const viewerTemplate = fs.readFileSync(
-    path.join(__dirname, "..", "templates", "replay-viewer.html"),
-    "utf-8"
-  );
-
-  // Inject replay data as a script tag before closing </body>
-  const dataScript = `<script id="replay-data" type="application/json">${JSON.stringify(replayData)}</script>`;
-  const html = viewerTemplate.replace("</body>", `${dataScript}\n</body>`);
-
-  const htmlFile = path.join(tmpDir, `replay-${Date.now()}.html`);
-  fs.writeFileSync(htmlFile, html);
-
-  console.log(`  Replay saved: ${replayFile}`);
-  console.log(`  Opening viewer...`);
-
-  // Open in browser
-  const platform = process.platform;
-  const cmd =
-    platform === "darwin" ? `open "${htmlFile}"` :
-    platform === "win32" ? `start "${htmlFile}"` :
-    `xdg-open "${htmlFile}"`;
-
-  exec(cmd, (err) => {
-    if (err) {
-      console.log(`  Could not open browser. Open manually: ${htmlFile}`);
-    }
-  });
+  openReplayViewer(replayData, { prefix: "replay" });
 }
 
 async function test(args) {
@@ -197,7 +154,7 @@ async function test(args) {
 
     // Open replay viewer if --view flag is set
     if (view && result.replay_data) {
-      openReplayViewer(result.replay_data, cloud);
+      viewReplay(result.replay_data, cloud);
     }
 
     if (icon === "WIN" && !result.warning) {
