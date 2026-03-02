@@ -21,6 +21,7 @@ const USAGE = `
 
   Flags:
     --game TYPE       Game type: battlesnake or kurve
+    --view            Open replay in browser after test
     --cloud           Open replay in web viewer instead of locally
     --vs ID           Test against a specific strategy by ID
 `;
@@ -35,6 +36,7 @@ function parseArgs(args) {
   let filePath = null;
   let game = null;
   let cloud = false;
+  let view = false;
   let vs = null;
 
   for (let i = 0; i < args.length; i++) {
@@ -42,6 +44,8 @@ function parseArgs(args) {
       game = args[++i];
     } else if (args[i] === "--cloud") {
       cloud = true;
+    } else if (args[i] === "--view") {
+      view = true;
     } else if (args[i] === "--vs" && args[i + 1]) {
       vs = args[++i];
     } else if (!args[i].startsWith("-")) {
@@ -49,7 +53,7 @@ function parseArgs(args) {
     }
   }
 
-  return { filePath, game, cloud, vs };
+  return { filePath, game, cloud, view, vs };
 }
 
 /**
@@ -107,7 +111,7 @@ async function test(args) {
     return;
   }
 
-  let { filePath, game, cloud, vs } = parseArgs(args);
+  let { filePath, game, cloud, view, vs } = parseArgs(args);
 
   // Auto-detect file
   if (!filePath) {
@@ -170,8 +174,8 @@ async function test(args) {
       console.log(`  \u26a0 ${result.warning}`);
     }
 
-    // Open replay viewer if we have replay data
-    if (result.replay_data) {
+    // Open replay viewer if --view flag is set
+    if (view && result.replay_data) {
       openReplayViewer(result.replay_data, cloud);
     }
 
