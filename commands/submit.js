@@ -348,10 +348,14 @@ async function submit(args) {
       }
 
       // Spinner with progress
-      const progress = job.completed_opponents != null && job.total_opponents
-        ? ` (${job.completed_opponents}/${job.total_opponents} opponents)`
-        : "";
-      process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Playing matches...${progress}`);
+      const completed = job.completed_opponents || 0;
+      const total = job.total_opponents || 0;
+      const progress = total ? ` (${completed}/${total} opponents)` : "";
+      let slowWarning = "";
+      if (completed === 0 && polls >= 20) { // 60s with no games completed
+        slowWarning = " — first game taking a long time, strategy may be too slow";
+      }
+      process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Playing matches...${progress}${slowWarning}`);
     }
   } catch (err) {
     process.stdout.write("\r\x1B[K");
