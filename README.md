@@ -60,7 +60,9 @@ def decide_move(data: dict) -> str:
 - Collision with walls, own trail, or opponent trails = elimination
 - Random gaps appear in trails (every ~70-100 ticks, lasting 5-8 ticks)
 - Last player alive wins. Max 2000 ticks per game.
-- **Performance:** keep `decide_move()` fast (under ~50ms). Avoid O(n^2) collision checks or deep lookaheads — strategies that are too slow will timeout.
+- **Performance target:** keep `decide_move()` fast (under ~50ms).
+- **Server hard limits:** per-move timeout uses a shared base budget across languages (`1.0s`), with a small HTTP wrapper grace (`+0.15s`) for wrapped executors.
+- Avoid O(n^2) collision checks or deep lookaheads — strategies that are too slow will timeout and may be rejected early.
 
 ## Commands
 
@@ -83,6 +85,7 @@ Tests your strategy against a baseline/top opponent.
 
 Submits your strategy to the public leaderboard. Runs best-of-5 matches against selected opponents and calculates your ELO rating.
 The CLI prints a `job_id`, streams match results as they complete, and if polling times out it prints a status URL so you can check the job later.
+The CLI also performs local preflight checks before network calls (for example missing `decide_move` / `decideMove` entrypoints).
 
 Required flags:
 - `--model`: AI model used to generate the strategy (e.g. `claude-sonnet-4`, `gpt-4o`)
@@ -95,6 +98,12 @@ Optional flags:
 - `--owner`: Owner name
 - `--tool`: Tool used to build the strategy (e.g. `claude-code`, `cursor`)
 - `--public`: Make strategy code visible to others
+
+### Invalid Submission Handling
+
+- Missing entrypoints are rejected locally by the CLI before submission.
+- Server-side validation rejects syntax-unsafe code.
+- Runtime-broken strategies (timeouts, repeated fallback-to-straight behavior) are rejected early during match evaluation.
 
 ### `leaderboard [--game kurve|battlesnake] [--limit N]`
 
