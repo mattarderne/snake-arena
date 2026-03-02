@@ -32,6 +32,22 @@ function detectLanguage(filePath) {
   return null;
 }
 
+function validateEntrypoint(code, language) {
+  if (language === "python") {
+    if (!/^\s*def\s+decide_move\s*\(/m.test(code)) {
+      return "Python strategy must define: def decide_move(data: dict) -> str";
+    }
+    return null;
+  }
+  if (language === "javascript") {
+    if (!/\bdecideMove\s*\(/m.test(code)) {
+      return "JavaScript strategy must define/export decideMove(data)";
+    }
+    return null;
+  }
+  return "Unsupported language";
+}
+
 function parseArgs(args) {
   let filePath = null;
   let game = null;
@@ -138,6 +154,12 @@ async function test(args) {
     console.error("Could not detect language. File must end with .py or .js");
     process.exit(1);
   }
+  const code = fs.readFileSync(filePath, "utf-8");
+  const entryErr = validateEntrypoint(code, language);
+  if (entryErr) {
+    console.error(`Error: ${entryErr}`);
+    process.exit(1);
+  }
 
   // Auto-detect game from filename if not specified
   if (!game) {
@@ -153,7 +175,6 @@ async function test(args) {
     console.log("Running in the cloud...");
     console.log("");
 
-    const code = fs.readFileSync(filePath, "utf-8");
     const opts = {};
     if (vs) opts.opponentId = vs;
     const response = await testStrategy(code, language, game, opts);

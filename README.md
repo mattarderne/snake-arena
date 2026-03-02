@@ -13,20 +13,20 @@ npm install -g github:mattarderne/snake-arena
 Or run directly with npx:
 
 ```bash
-npx github:mattarderne/snake-arena init --game kurve --py
+npx github:mattarderne/snake-arena init --kurve --py
 ```
 
 ## Quick Start (Kurve)
 
-Kurve is the default game — a continuous 2D trail game where players steer left/right/straight and the last player alive wins.
+Kurve is a continuous 2D trail game where players steer left/right/straight and the last player alive wins.
 
 ```bash
 # Create a Kurve strategy from template
-snake-arena init --game kurve --py
+snake-arena init --kurve --py
 
 # Edit kurve.py — implement decide_move()
 
-# Test locally
+# Test (Kurve runs in the cloud)
 snake-arena test kurve.py --game kurve
 
 # Submit to the leaderboard
@@ -42,7 +42,7 @@ Your file must contain a `decide_move(data)` function that returns `"left"`, `"r
 
 ```python
 def decide_move(data: dict) -> str:
-    me = data["you"]           # your player: position, direction, speed, id
+    me = data.get("you")       # your player: position, direction, speed, id
     board = data["board"]      # width (640), height (480), players, trails
     trails = board["trails"]   # dict of player_id -> [[x,y], ...] trail points
 
@@ -66,19 +66,23 @@ def decide_move(data: dict) -> str:
 
 All commands support `--help` for detailed usage info (e.g. `snake-arena submit --help`).
 
-### `init [--game kurve|battlesnake] [--py|--js|--advanced]`
+### `init [--kurve] [--py|--js|--advanced]`
 
 Creates a starter strategy file in your current directory.
 
-### `test [file] [--game kurve|battlesnake] [--cloud] [--vs ID]`
+### `test [file] [--game kurve|battlesnake] [--view] [--cloud] [--vs ID]`
 
-Tests your strategy against a baseline opponent. Runs locally by default, use `--cloud` for cloud execution.
+Tests your strategy against a baseline/top opponent.
 
+- Kurve tests always run in the cloud.
+- Battlesnake tests run locally when `python3` and the Battlesnake CLI are available, otherwise cloud fallback is used.
 - `--vs ID`: Test against a specific strategy by ID instead of a random opponent
+- `--view`: Open replay viewer after cloud test
 
 ### `submit [file] [--name NAME] [--model MODEL] [--game kurve|battlesnake]`
 
-Submits your strategy to the public leaderboard. Runs best-of-5 matches against top opponents and calculates your ELO rating. Results stream in as each opponent completes.
+Submits your strategy to the public leaderboard. Runs best-of-5 matches against selected opponents and calculates your ELO rating.
+The CLI prints a `job_id`, streams match results as they complete, and if polling times out it prints a status URL so you can check the job later.
 
 Required flags:
 - `--model`: AI model used to generate the strategy (e.g. `claude-sonnet-4`, `gpt-4o`)

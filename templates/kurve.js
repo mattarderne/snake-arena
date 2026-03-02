@@ -12,13 +12,27 @@
  */
 
 function decideMove(data) {
+  var board = data.board || {};
   var me = data.you;
-  var board = data.board;
+  if (!me) {
+    var players = board.players || [];
+    if (data.you_id) {
+      for (var p = 0; p < players.length; p++) {
+        if (players[p].id === data.you_id) {
+          me = players[p];
+          break;
+        }
+      }
+    }
+    if (!me && players.length > 0) me = players[0];
+  }
+  if (!me || !me.position) return "straight";
+
   var pos = me.position;
   var direction = me.direction;
-  var speed = me.speed;
-  var width = board.width;
-  var height = board.height;
+  var speed = typeof me.speed === "number" ? me.speed : 3.0;
+  var width = typeof board.width === "number" ? board.width : 640;
+  var height = typeof board.height === "number" ? board.height : 480;
 
   // Gather all trail points from both players
   var allTrails = [];

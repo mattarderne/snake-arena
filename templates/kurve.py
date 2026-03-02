@@ -20,6 +20,7 @@ def decide_move(data: dict) -> str:
     Args:
         data: Full game state dict containing:
             - data["you"]: Your player (position, direction, speed, alive)
+              (fallback: derive from board.players if missing)
             - data["board"]: Board state (width, height, players, trails)
             - data["turn"]: Current turn number
 
@@ -29,14 +30,24 @@ def decide_move(data: dict) -> str:
     import math
     import random
 
-    me = data["you"]
-    board = data["board"]
+    board = data.get("board", {})
+    me = data.get("you")
+    if me is None:
+        players = board.get("players", [])
+        you_id = data.get("you_id")
+        if you_id:
+            me = next((p for p in players if p.get("id") == you_id), None)
+        if me is None and players:
+            me = players[0]
+    if me is None:
+        return "straight"
+
     pos = me["position"]
     direction = me["direction"]
-    speed = me["speed"]
+    speed = me.get("speed", 3.0)
 
-    width = board["width"]
-    height = board["height"]
+    width = board.get("width", 640)
+    height = board.get("height", 480)
 
     # Look ahead: where will we be in N ticks for each move?
     def simulate(move, steps=15):

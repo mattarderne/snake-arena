@@ -6,7 +6,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const { submitStrategy, getStatus } = require("../lib/api");
+const { API_BASE, submitStrategy, getStatus } = require("../lib/api");
 
 const USAGE = `
   Usage: snake-arena submit [file] [flags]
@@ -28,6 +28,22 @@ function detectLanguage(filePath) {
   if (filePath.endsWith(".py")) return "python";
   if (filePath.endsWith(".js")) return "javascript";
   return null;
+}
+
+function validateEntrypoint(code, language) {
+  if (language === "python") {
+    if (!/^\s*def\s+decide_move\s*\(/m.test(code)) {
+      return "Python strategy must define: def decide_move(data: dict) -> str";
+    }
+    return null;
+  }
+  if (language === "javascript") {
+    if (!/\bdecideMove\s*\(/m.test(code)) {
+      return "JavaScript strategy must define/export decideMove(data)";
+    }
+    return null;
+  }
+  return "Unsupported language";
 }
 
 function parseArgs(args) {
@@ -64,6 +80,19 @@ function parseArgs(args) {
   }
 
   return { filePath, name, model, notes, parent, tool, game, owner, isPublic };
+}
+
+function parseRateLimitResetMinutes(resetHeader) {
+  const parsed = Number.parseInt(String(resetHeader), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+
+  const nowEpochSec = Math.floor(Date.now() / 1000);
+  const looksLikeMsEpoch = parsed > 10_000_000_000;
+  const resetEpoch = looksLikeMsEpoch ? Math.floor(parsed / 1000) : parsed;
+
+  const deltaSec = resetEpoch > nowEpochSec ? resetEpoch - nowEpochSec : resetEpoch;
+  if (!Number.isFinite(deltaSec) || deltaSec <= 0) return null;
+  return Math.ceil(deltaSec / 60);
 }
 
 function displayResult(result, gameName, game, ownershipToken) {
@@ -212,6 +241,11 @@ async function submit(args) {
     console.error("Strategy file too large (max 50KB)");
     process.exit(1);
   }
+  const entryErr = validateEntrypoint(code, language);
+  if (entryErr) {
+    console.error(`Error: ${entryErr}`);
+    process.exit(1);
+  }
 
   // Auto-detect game from filename if not specified
   if (!game) {
@@ -265,8 +299,10 @@ async function submit(args) {
     if (remaining != null && limit != null) {
       let resetStr = "";
       if (reset) {
-        const resetMins = Math.ceil(parseInt(reset, 10) / 60);
-        resetStr = `, resets in ${resetMins}m`;
+        const resetMins = parseRateLimitResetMinutes(reset);
+        if (resetMins != null) {
+          resetStr = `, resets in ${resetMins}m`;
+        }
       }
       console.log(`  Submitted (${remaining}/${limit} submits remaining${resetStr})`);
     }
@@ -279,11 +315,12 @@ async function submit(args) {
       return;
     }
 
+    console.log(`  Job ID: ${job_id}`);
     console.log("  Match results:");
 
-    // Phase 2: Poll for progress every 3s, timeout after 5 minutes
+    // Phase 2: Poll for progress every 3s, timeout after 25 minutes
     let lastMatchCount = 0;
-    const maxPolls = 100; // 100 × 3s = 5 minutes
+    const maxPolls = 500; // 500 × 3s = 25 minutes
     let polls = 0;
     while (true) {
       await new Promise(r => setTimeout(r, 3000));
@@ -296,8 +333,10 @@ async function submit(args) {
       } catch (err) {
         if (polls >= maxPolls) {
           process.stdout.write("\r\x1B[K");
-          console.error(`\n  Error: Timed out waiting for results (${err.message})`);
-          process.exit(1);
+          console.log("\n  Submission is still running in the backend.");
+          console.log(`  Last status check failed: ${err.message}`);
+          console.log(`  Check status: ${API_BASE}/api/status?job_id=${encodeURIComponent(job_id)}`);
+          return;
         }
         process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Waiting for backend...`);
         continue;
@@ -305,7 +344,7 @@ async function submit(args) {
 
       // Job not yet created on backend — keep waiting
       if (job.error === "Job not found") {
-        if (polls >= 20) { // 60s without job file = something is wrong
+        if (polls >= 40) { // 120s without job file = something is wrong
           process.stdout.write("\r\x1B[K");
           console.error(`\n  Error: Backend never started processing this job`);
           process.exit(1);
@@ -343,8 +382,9 @@ async function submit(args) {
 
       if (polls >= maxPolls) {
         process.stdout.write("\r\x1B[K");
-        console.error(`\n  Error: Timed out waiting for results after 5 minutes`);
-        process.exit(1);
+        console.log("\n  Submission is still running in the backend.");
+        console.log(`  Check status: ${API_BASE}/api/status?job_id=${encodeURIComponent(job_id)}`);
+        return;
       }
 
       // Spinner with progress

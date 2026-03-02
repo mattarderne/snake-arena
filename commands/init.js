@@ -109,7 +109,11 @@ async function init(args) {
   console.log("");
   console.log("Next steps:");
   console.log(`  1. Edit ${outputFile} with your strategy`);
-  console.log(`  2. Test:   npx github:mattarderne/snake-arena test ${outputFile}  (Docker cloud-parity local by default)`);
+  if (game === "kurve") {
+    console.log(`  2. Test:   npx github:mattarderne/snake-arena test ${outputFile} --game kurve  (runs in cloud)`);
+  } else {
+    console.log(`  2. Test:   npx github:mattarderne/snake-arena test ${outputFile}  (local if python3 + battlesnake CLI are installed)`);
+  }
   if (game === "kurve") {
     console.log(`  2b. Data:  npx github:mattarderne/snake-arena replay <any-id> --summary`);
   }
