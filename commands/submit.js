@@ -352,7 +352,7 @@ async function submit(args) {
       const total = job.total_opponents || 0;
       const progress = total ? ` (${completed}/${total} opponents)` : "";
       let slowWarning = "";
-      if (completed === 0 && polls >= 20) { // 60s with no games completed
+      if (completed === 0 && polls >= 10) { // 30s with no games completed
         slowWarning = " — first game taking a long time, strategy may be too slow";
       }
       process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Playing matches...${progress}${slowWarning}`);
