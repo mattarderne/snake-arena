@@ -12,38 +12,73 @@
  */
 
 function decideMove(data) {
-  const me = data.you;
-  const board = data.board;
-  const pos = me.position;
-  const direction = me.direction;
-  const speed = me.speed;
-  const width = board.width;
-  const height = board.height;
+  var me = data.you;
+  var board = data.board;
+  var pos = me.position;
+  var direction = me.direction;
+  var speed = me.speed;
+  var width = board.width;
+  var height = board.height;
 
-  // Look ahead: where will we be in N ticks for each move?
-  function simulate(move, steps) {
-    steps = steps || 15;
-    let x = pos.x, y = pos.y, d = direction;
-    for (let i = 0; i < steps; i++) {
-      if (move === "left") d = (d + 5) % 360;
-      else if (move === "right") d = ((d - 5) % 360 + 360) % 360;
-      const rad = d * Math.PI / 180;
-      x += Math.cos(rad) * speed;
-      y += Math.sin(rad) * speed;
+  // Gather all trail points from both players
+  var allTrails = [];
+  var trails = board.trails;
+  for (var pid in trails) {
+    var pts = trails[pid];
+    for (var i = 0; i < pts.length; i++) {
+      if (pts[i] !== null) allTrails.push(pts[i]);
     }
-    return { x, y };
   }
 
-  // Score each move: prefer staying away from walls
-  let bestMove = "straight";
-  let bestScore = -999;
+  // Simulate a path for a given move over N steps
+  // Returns minimum distance to any wall or trail point encountered
+  function simulate(move, steps) {
+    var x = pos.x, y = pos.y, d = direction;
+    var minWallDist = Infinity;
+    var minTrailDist = Infinity;
+    var alive = true;
 
-  for (const move of ["left", "right", "straight"]) {
-    const future = simulate(move);
-    let score = Math.min(future.x, future.y, width - future.x, height - future.y);
+    for (var i = 0; i < steps; i++) {
+      if (move === "left") d = (d + 5) % 360;
+      else if (move === "right") d = ((d - 5) % 360 + 360) % 360;
+      var rad = d * Math.PI / 180;
+      x += Math.cos(rad) * speed;
+      y += Math.sin(rad) * speed;
 
-    if (future.x < 0 || future.x >= width || future.y < 0 || future.y >= height) {
-      score = -1000;
+      // Wall distance
+      var wd = Math.min(x, y, width - x, height - y);
+      if (wd < 0) { alive = false; break; }
+      if (wd < minWallDist) minWallDist = wd;
+
+      // Trail distance (check against all known points)
+      for (var j = 0; j < allTrails.length; j++) {
+        var dx = x - allTrails[j][0];
+        var dy = y - allTrails[j][1];
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 3.0) { alive = false; break; }
+        if (dist < minTrailDist) minTrailDist = dist;
+      }
+      if (!alive) break;
+    }
+
+    return { alive: alive, stepsAlive: alive ? steps : i, minWallDist: minWallDist, minTrailDist: minTrailDist };
+  }
+
+  var bestMove = "straight";
+  var bestScore = -Infinity;
+
+  var moves = ["straight", "left", "right"];
+  for (var m = 0; m < moves.length; m++) {
+    var move = moves[m];
+    var result = simulate(move, 25);
+
+    var score;
+    if (!result.alive) {
+      // Died: score by how long we survived
+      score = -1000 + result.stepsAlive;
+    } else {
+      // Alive: prefer distance from danger
+      score = Math.min(result.minWallDist, result.minTrailDist * 2);
     }
 
     if (score > bestScore) {

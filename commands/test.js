@@ -165,13 +165,20 @@ async function test(args) {
     const oppName = result.opponent_name || (vs ? vs : "Random Kurve opponent");
     console.log(`  Result: ${icon} (${result.turns} ticks) vs ${oppName}`);
 
+    if (result.warning) {
+      console.log("");
+      console.log(`  \u26a0 ${result.warning}`);
+    }
+
     // Open replay viewer if we have replay data
     if (result.replay_data) {
       openReplayViewer(result.replay_data, cloud);
     }
 
-    if (icon === "WIN") {
+    if (icon === "WIN" && !result.warning) {
       console.log(`\nLooking good! Try: npx snake-arena submit ${filePath} --game kurve`);
+    } else if (icon === "WIN" && result.warning) {
+      console.log(`\nYou won, but the game may have been invalid. Check your decide_move() for errors.`);
     }
     return;
   }

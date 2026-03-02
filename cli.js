@@ -24,6 +24,7 @@ const { login } = require("./commands/login");
 const replay = require("./commands/replay");
 const play = require("./commands/play");
 const { show } = require("./commands/show");
+const titlematch = require("./commands/titlematch");
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -51,6 +52,7 @@ const HELP = `
       --summary                         Print human-readable game summary
       --turn N                          Print game state at turn N
     play <strategy.js> [--opponent rank:N]  Play against an AI in the browser
+    titlematch [--run] [--game TYPE]     View or trigger a title match (top 3 FFA)
     show <strategy-id> [--code] [--stats]  Inspect a strategy's info, code, or stats
     login                               Authenticate via GitHub (for ranked play)
 
@@ -87,6 +89,10 @@ async function main() {
       break;
     case "play":
       await play(args.slice(1));
+      break;
+    case "titlematch":
+    case "title":
+      await titlematch(args.slice(1));
       break;
     case "show":
       await show(args.slice(1));

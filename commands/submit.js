@@ -95,9 +95,13 @@ function displayResult(result, gameName, game, ownershipToken) {
           : match.series_result === "loss"
             ? "L"
             : "D";
+      const invalidNote = match.invalid_games ? ` [${match.invalid_games} invalid skipped]` : "";
       console.log(
-        `    ${icon} vs ${match.opponent_name} (${match.wins}-${match.losses}-${match.draws})`
+        `    ${icon} vs ${match.opponent_name} (${match.wins}-${match.losses}-${match.draws})${invalidNote}`
       );
+      if (match.warning) {
+        console.log(`      \u26a0 ${match.warning}`);
+      }
       if (icon === "L" && result.replays) {
         // Find a replay for this opponent
         const oppReplay = result.replays.find(r => r.includes(match.opponent_id));
@@ -321,7 +325,11 @@ async function submit(args) {
       for (const m of matches.slice(lastMatchCount)) {
         process.stdout.write("\r\x1B[K");
         const icon = m.series_result === "win" ? "W" : m.series_result === "loss" ? "L" : "D";
-        console.log(`    ${icon} vs ${m.opponent_name} (${m.wins}-${m.losses}-${m.draws})`);
+        const invalidNote = m.invalid_games ? ` [${m.invalid_games} invalid skipped]` : "";
+        console.log(`    ${icon} vs ${m.opponent_name} (${m.wins}-${m.losses}-${m.draws})${invalidNote}`);
+        if (m.warning) {
+          console.log(`      \u26a0 ${m.warning}`);
+        }
         lastMatchCount++;
       }
 

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kurve - Play</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a1a; color: #e0e0e0; font-family: system-ui, sans-serif; }
+  .container { display: flex; height: 100vh; }
+  .sidebar { width: 280px; padding: 16px; overflow-y: auto; border-right: 1px solid #333; flex-shrink: 0; }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 16px; overflow-y: auto; }
+  h2 { font-size: 16px; margin-bottom: 12px; color: #4fc3f7; }
+  h3 { font-size: 13px; margin: 12px 0 6px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  button { background: #1a1a30; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #2a2a40; }
+  button.primary { background: #4fc3f7; color: #000; border-color: #4fc3f7; font-weight: 600; }
+  button.primary:hover { background: #39b0e0; }
+  .section { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #222; }
+  .stat { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; border-bottom: 1px solid #1a1a30; }
+  .stat .val { color: #4fc3f7; font-weight: 600; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 4px 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  canvas { border: 2px solid #333; border-radius: 4px; }
+  .controls-row { display: flex; gap: 8px; margin-top: 12px; }
+  .keys { font-size: 12px; color: #888; margin-top: 8px; }
+  .keys kbd { background: #1a1a30; border: 1px solid #444; border-radius: 3px; padding: 1px 6px; font-family: inherit; color: #e0e0e0; }
+  .overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(10,10,26,0.85); z-index: 10; pointer-events: none;
+  }
+  .overlay.active { display: flex; pointer-events: auto; }
+  .overlay h1 { font-size: 36px; margin-bottom: 8px; }
+  .overlay p { font-size: 16px; color: #aaa; margin-bottom: 20px; }
+  .overlay button { pointer-events: auto; font-size: 15px; padding: 8px 20px; }
+  .canvas-wrap { position: relative; }
+  select {
+    width: 100%; background: #1a1a30; color: #e0e0e0; border: 1px solid #444;
+    border-radius: 4px; padding: 6px 8px; font-size: 13px; font-family: inherit; cursor: pointer;
+  }
+  select:focus { outline: none; border-color: #4fc3f7; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; }
+  .tag-js { background: #f7df1e; color: #000; }
+  .tag-py { background: #3776ab; color: #fff; }
+  .opponent-info { font-size: 11px; color: #888; margin-top: 6px; }
+  .match-history { width: 640px; margin-top: 12px; font-size: 13px; color: #888; }
+  .match-summary { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; font-size: 15px; }
+  .match-summary .count { font-weight: 700; font-size: 18px; }
+  .match-summary .count.win { color: #66bb6a; }
+  .match-summary .count.loss { color: #ef5350; }
+  .match-summary .count.draw { color: #ffa726; }
+  .match-table { width: 100%; border-collapse: collapse; }
+  .match-table td { padding: 5px 8px; border-bottom: 1px solid #1a1a30; font-size: 13px; }
+  .match-table .result { font-weight: 700; width: 50px; }
+  .match-table .result.win { color: #66bb6a; }
+  .match-table .result.loss { color: #ef5350; }
+  .match-table .result.draw { color: #ffa726; }
+  .match-table .opponent { color: #ccc; }
+  .match-table .ticks { color: #666; text-align: right; width: 60px; }
+  .match-table .num { color: #555; width: 24px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="sidebar">
+    <h2>Kurve - Play</h2>
+
+    <div class="section">
+      <h3>Opponent</h3>
+      <select id="opponentSelect"></select>
+      <div id="opponentInfo" class="opponent-info"></div>
+    </div>
+
+    <div class="section">
+      <h3>Players</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#4fc3f7"></div> <span style="color:#4fc3f7">You</span> (arrow keys)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffa726"></div> <span id="aiName" style="color:#ffa726">AI Opponent</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Stats</h3>
+      <div id="stats">
+        <div class="stat"><span>Tick</span><span class="val" id="tickVal">0</span></div>
+        <div class="stat"><span>Your status</span><span class="val" id="humanStatus">Alive</span></div>
+        <div class="stat"><span>AI status</span><span class="val" id="aiStatus">Alive</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Score</h3>
+      <div class="stat"><span>You</span><span class="val" id="humanScore">0</span></div>
+      <div class="stat"><span>AI</span><span class="val" id="aiScore">0</span></div>
+    </div>
+
+    <div class="section">
+      <div class="controls-row">
+        <button id="restartBtn" class="primary">Restart</button>
+        <button id="saveReplayBtn">Save Replay</button>
+      </div>
+      <div class="keys">
+        <p style="margin-top:8px"><kbd>&larr;</kbd> Turn left &nbsp; <kbd>&rarr;</kbd> Turn right</p>
+        <p style="margin-top:4px"><kbd>R</kbd> Restart &nbsp; <kbd>Space</kbd> Pause / Restart</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="main">
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="640" height="480"></canvas>
+      <div id="overlay" class="overlay active">
+        <h1 style="color:#4fc3f7">Kurve</h1>
+        <p>Select an opponent and press any key to start</p>
+      </div>
+    </div>
+    <div id="matchHistory" class="match-history">No matches yet</div>
+  </div>
+</div>
+
+<script>
+const BOARD_W = 640, BOARD_H = 480;
+const SPEED = 3.0, TURN_DEG = 5;
+const COLLISION_R = 3.0;
+const SKIP_OWN = 5;
+const MAX_TICKS = 2000;
+const TICK_MS = 1000 / 60;
+const COLORS = { human: "#4fc3f7", ai: "#ffa726" };
+const BG = "#0a0a1a";
+const GRID_COLOR = "#1a1a30";
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let humanScore = 0, aiScore = 0;
+let gameRunning = false, paused = false, gameStarted = false;
+let tickCount = 0;
+let keysDown = {};
+
+let human, ai;
+let humanTrail, aiTrail;
+let humanGap, aiGap;
+let replayTurns = [];
+let matchHistory = [];
+
+// --- Built-in AI fallback ---
+const BUILTIN_AI = `function decideMove(data) {
+  var me = data.you, board = data.board;
+  var pos = me.position, direction = me.direction, speed = me.speed;
+  var width = board.width, height = board.height;
+  var allTrails = [];
+  var trails = board.trails;
+  for (var pid in trails) { var pts = trails[pid]; for (var i = 0; i < pts.length; i++) { if (pts[i] !== null) allTrails.push(pts[i]); } }
+  function simulate(move, steps) {
+    var x = pos.x, y = pos.y, d = direction, minW = Infinity, minT = Infinity, alive = true;
+    for (var i = 0; i < steps; i++) {
+      if (move === "left") d = (d + 5) % 360;
+      else if (move === "right") d = ((d - 5) % 360 + 360) % 360;
+      var rad = d * Math.PI / 180; x += Math.cos(rad) * speed; y += Math.sin(rad) * speed;
+      var wd = Math.min(x, y, width - x, height - y);
+      if (wd < 0) { alive = false; break; } if (wd < minW) minW = wd;
+      for (var j = 0; j < allTrails.length; j++) {
+        var dx = x - allTrails[j][0], dy = y - allTrails[j][1], dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < 3.0) { alive = false; break; } if (dist < minT) minT = dist;
+      } if (!alive) break;
+    }
+    return { alive: alive, stepsAlive: alive ? steps : i, minWallDist: minW, minTrailDist: minT };
+  }
+  var bestMove = "straight", bestScore = -Infinity;
+  var moves = ["straight", "left", "right"];
+  for (var m = 0; m < moves.length; m++) {
+    var r = simulate(moves[m], 25);
+    var score = r.alive ? Math.min(r.minWallDist, r.minTrailDist * 2) : -1000 + r.stepsAlive;
+    if (score > bestScore) { bestScore = score; bestMove = moves[m]; }
+  }
+  return bestMove;
+}`;
+
+// --- Strategy catalog & AI loading ---
+// Use relative URLs when served from the arena site, absolute when local
+const API_BASE = location.protocol === "file:" ? "https://arena-web-vinext.matt-15d.workers.dev" : "";
+let strategies = [];
+let leaderboardEntries = []; // raw entries for lazy code fetching
+let currentStrategyIdx = 0;
+let aiDecideMove = () => "straight";
+let aiReady = false;
+let pyodideInstance = null;
+let pyodideLoading = false;
+
+async function loadCatalog() {
+  // 1. Check for CLI-injected catalog
+  const el = document.getElementById("strategy-catalog");
+  if (el) {
+    try { strategies = JSON.parse(el.textContent); } catch {}
+  }
+
+  // 2. If no injected catalog (deployed web mode), fetch leaderboard from API
+  if (strategies.length === 0) {
+    const ov = document.getElementById("overlay");
+    ov.classList.add("active");
+    ov.innerHTML = `<h1 style="color:#4fc3f7">Kurve</h1><p>Loading strategies...</p>`;
+    try {
+      const resp = await fetch(`${API_BASE}/api/leaderboard?limit=50&game=kurve`);
+      const data = await resp.json();
+      leaderboardEntries = data.strategies || [];
+      for (const entry of leaderboardEntries) {
+        const lang = entry.language === "python" ? "py" : "js";
+        strategies.push({
+          name: entry.name,
+          lang,
+          elo: Math.round(entry.elo),
+          code: null, // lazy-loaded on selection
+          id: entry.id,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch leaderboard:", e);
+    }
+  }
+
+  if (strategies.length === 0) {
+    strategies = [{ name: "Built-in (wall dodge)", lang: "js", elo: null, code: BUILTIN_AI }];
+  }
+
+  populateDropdown();
+
+  // Auto-select from ?strategy=ID URL param
+  const params = new URLSearchParams(location.search);
+  const stratParam = params.get("strategy");
+  let startIdx = 0;
+  if (stratParam) {
+    const match = strategies.findIndex(s => s.id === stratParam);
+    if (match >= 0) startIdx = match;
+  }
+  document.getElementById("opponentSelect").value = startIdx;
+  await selectStrategy(startIdx);
+}
+
+function populateDropdown() {
+  const sel = document.getElementById("opponentSelect");
+  sel.innerHTML = "";
+  strategies.forEach((s, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    const eloStr = s.elo != null ? ` [${s.elo}]` : "";
+    const langTag = s.lang === "py" ? " \ud83d\udc0d" : " \u26a1";
+    opt.textContent = `${s.name}${eloStr}${langTag}`;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener("change", () => {
+    const idx = parseInt(sel.value, 10);
+    selectStrategy(idx);
+  });
+}
+
+async function selectStrategy(idx) {
+  currentStrategyIdx = idx;
+  const s = strategies[idx];
+  aiReady = false;
+
+  const info = document.getElementById("opponentInfo");
+  const langLabel = s.lang === "py" ? "Python" : "JavaScript";
+  const eloLabel = s.elo != null ? `ELO ${s.elo}` : "Unranked";
+
+  document.getElementById("aiName").textContent = s.name;
+
+  // Lazy-fetch code from API if not yet loaded
+  if (s.code === null && s.id) {
+    info.innerHTML = `${langLabel} &middot; ${eloLabel} &middot; <span style="color:#4fc3f7">fetching code...</span>`;
+    try {
+      const resp = await fetch(`${API_BASE}/api/code?strategy_id=${encodeURIComponent(s.id)}`);
+      const data = await resp.json();
+      if (data.code) {
+        s.code = data.code;
+      } else {
+        s.code = "__private__";
+      }
+    } catch (e) {
+      console.error("Failed to fetch strategy code:", e);
+      s.code = "__private__";
+    }
+  }
+
+  if (!s.code || s.code === "__private__") {
+    info.innerHTML = `${langLabel} &middot; ${eloLabel} &middot; <span style="color:#ef5350">code is private</span>`;
+    aiDecideMove = () => "straight";
+    aiReady = true;
+    return;
+  }
+
+  info.innerHTML = `${langLabel} &middot; ${eloLabel}`;
+
+  if (s.lang === "py") {
+    await loadPythonStrategy(s.code);
+  } else {
+    loadJSStrategy(s.code);
+  }
+
+  aiReady = true;
+
+  // Reset score when switching
+  humanScore = 0; aiScore = 0;
+  updateScoreUI();
+
+  if (gameStarted) {
+    restart();
+  } else {
+    const ov = document.getElementById("overlay");
+    ov.classList.add("active");
+    ov.innerHTML = `
+      <h1 style="color:#4fc3f7">Kurve</h1>
+      <p>Press any key or click to start</p>
+    `;
+  }
+}
+
+function loadJSStrategy(code) {
+  try {
+    const fn = new Function(`
+      var module = { exports: {} };
+      var exports = module.exports;
+      var require = function() { return {}; };
+      ${code}
+      return typeof decideMove === 'function' ? decideMove : module.exports.decideMove;
+    `);
+    const result = fn();
+    if (typeof result === "function") {
+      aiDecideMove = result;
+      return;
+    }
+  } catch (e) {
+    console.error("Failed to load JS strategy:", e);
+  }
+  aiDecideMove = () => "straight";
+}
+
+async function loadPythonStrategy(code) {
+  if (!pyodideInstance) {
+    if (pyodideLoading) return; // avoid double-loading
+    pyodideLoading = true;
+    const ov = document.getElementById("overlay");
+    ov.classList.add("active");
+    ov.innerHTML = `
+      <h1 style="color:#4fc3f7">Loading Python...</h1>
+      <p>Downloading Pyodide runtime (first time may take a few seconds)</p>
+    `;
+    try {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js";
+      document.head.appendChild(script);
+      await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; });
+      pyodideInstance = await window.loadPyodide();
+    } catch (e) {
+      console.error("Failed to load Pyodide:", e);
+      aiDecideMove = () => "straight";
+      pyodideLoading = false;
+      return;
+    }
+    pyodideLoading = false;
+  }
+
+  try {
+    pyodideInstance.runPython(code);
+    const hasCamel = pyodideInstance.runPython("'decideMove' in dir()");
+    const fnName = hasCamel ? "decideMove" : "decide_move";
+
+    aiDecideMove = (data) => {
+      try {
+        pyodideInstance.globals.set("_game_data", pyodideInstance.toPy(data));
+        return pyodideInstance.runPython(`${fnName}(_game_data)`);
+      } catch (e) {
+        console.error("Python AI error:", e);
+        return "straight";
+      }
+    };
+  } catch (e) {
+    console.error("Failed to load Python strategy:", e);
+    aiDecideMove = () => "straight";
+  }
+}
+
+// --- Game logic ---
+function randomStart() {
+  const margin = 60;
+  const x = margin + Math.random() * (BOARD_W - 2 * margin);
+  const y = margin + Math.random() * (BOARD_H - 2 * margin);
+  const cx = BOARD_W / 2, cy = BOARD_H / 2;
+  const dir = Math.atan2(cy - y, cx - x) * 180 / Math.PI;
+  const finalDir = ((dir + (Math.random() - 0.5) * 90) % 360 + 360) % 360;
+  return { x, y, direction: finalDir };
+}
+
+function newGapState() {
+  return { countdown: 70 + Math.floor(Math.random() * 31), gapLeft: 0 };
+}
+
+function initGame() {
+  const hs = randomStart();
+  const as = randomStart();
+  human = { x: hs.x, y: hs.y, direction: hs.direction, alive: true, speed: SPEED };
+  ai = { x: as.x, y: as.y, direction: as.direction, alive: true, speed: SPEED };
+  humanTrail = [[hs.x, hs.y]];
+  aiTrail = [[as.x, as.y]];
+  humanGap = newGapState();
+  aiGap = newGapState();
+  tickCount = 0;
+  replayTurns = [];
+  gameRunning = true;
+  paused = false;
+  recordTurn();
+}
+
+function recordTurn() {
+  replayTurns.push({
+    tick: tickCount,
+    board: {
+      width: BOARD_W, height: BOARD_H,
+      players: [
+        { id: "p0", position: { x: human.x, y: human.y }, direction: human.direction, speed: SPEED, alive: human.alive },
+        { id: "p1", position: { x: ai.x, y: ai.y }, direction: ai.direction, speed: SPEED, alive: ai.alive }
+      ],
+      trails: {
+        p0: humanTrail.map(p => p === null ? null : [p[0], p[1]]),
+        p1: aiTrail.map(p => p === null ? null : [p[0], p[1]])
+      }
+    }
+  });
+}
+
+function buildGameState(player, playerId, trail, opponentTrail) {
+  return {
+    you: {
+      id: playerId,
+      position: { x: player.x, y: player.y },
+      direction: player.direction,
+      speed: player.speed,
+      trail: trail.filter(p => p !== null).map(p => [p[0], p[1]])
+    },
+    board: {
+      width: BOARD_W, height: BOARD_H,
+      players: [
+        { id: "p0", position: { x: human.x, y: human.y }, direction: human.direction, speed: SPEED, alive: human.alive },
+        { id: "p1", position: { x: ai.x, y: ai.y }, direction: ai.direction, speed: SPEED, alive: ai.alive }
+      ],
+      trails: {
+        p0: humanTrail.filter(p => p !== null).map(p => [p[0], p[1]]),
+        p1: aiTrail.filter(p => p !== null).map(p => [p[0], p[1]])
+      }
+    },
+    tick: tickCount
+  };
+}
+
+function movePlayer(player, move) {
+  if (move === "left") player.direction = ((player.direction + TURN_DEG) % 360 + 360) % 360;
+  else if (move === "right") player.direction = ((player.direction - TURN_DEG) % 360 + 360) % 360;
+  const rad = player.direction * Math.PI / 180;
+  player.x += Math.cos(rad) * player.speed;
+  player.y += Math.sin(rad) * player.speed;
+}
+
+function checkCollision(player, trail, ownTrail) {
+  if (player.x < 0 || player.x > BOARD_W || player.y < 0 || player.y > BOARD_H) return true;
+  const allTrails = [
+    { points: trail, isOwn: false },
+    { points: ownTrail, isOwn: true }
+  ];
+  for (const { points, isOwn } of allTrails) {
+    const end = isOwn ? points.length - SKIP_OWN : points.length;
+    for (let i = 0; i < end; i++) {
+      const pt = points[i];
+      if (pt === null) continue;
+      const dx = player.x - pt[0];
+      const dy = player.y - pt[1];
+      if (dx * dx + dy * dy < COLLISION_R * COLLISION_R) return true;
+    }
+  }
+  return false;
+}
+
+function updateGap(gapState, trail, player) {
+  gapState.countdown--;
+  if (gapState.countdown <= 0 && gapState.gapLeft <= 0) {
+    gapState.gapLeft = 5 + Math.floor(Math.random() * 4);
+  }
+  if (gapState.gapLeft > 0) {
+    gapState.gapLeft--;
+    trail.push(null);
+    if (gapState.gapLeft <= 0) {
+      gapState.countdown = 70 + Math.floor(Math.random() * 31);
+    }
+  } else {
+    trail.push([player.x, player.y]);
+  }
+}
+
+function getHumanMove() {
+  if (keysDown["ArrowLeft"]) return "left";
+  if (keysDown["ArrowRight"]) return "right";
+  return "straight";
+}
+
+function getAIMove() {
+  try {
+    const state = buildGameState(ai, "p1", aiTrail, humanTrail);
+    const move = aiDecideMove(state);
+    if (["left", "right", "straight"].includes(move)) return move;
+  } catch (e) {
+    console.error("AI error:", e);
+  }
+  return "straight";
+}
+
+function tick() {
+  if (!gameRunning || paused) return;
+  tickCount++;
+
+  const hMove = getHumanMove();
+  const aMove = getAIMove();
+
+  if (human.alive) movePlayer(human, hMove);
+  if (ai.alive) movePlayer(ai, aMove);
+
+  if (human.alive) updateGap(humanGap, humanTrail, human);
+  if (ai.alive) updateGap(aiGap, aiTrail, ai);
+
+  if (human.alive && checkCollision(human, aiTrail, humanTrail)) human.alive = false;
+  if (ai.alive && checkCollision(ai, humanTrail, aiTrail)) ai.alive = false;
+
+  recordTurn();
+
+  if (!human.alive || !ai.alive || tickCount >= MAX_TICKS) {
+    gameRunning = false;
+    if (human.alive && !ai.alive) humanScore++;
+    else if (!human.alive && ai.alive) aiScore++;
+    updateScoreUI();
+    showResult();
+  }
+
+  updateStatsUI();
+  draw();
+}
+
+function showResult() {
+  const overlay = document.getElementById("overlay");
+  overlay.classList.add("active");
+  let msg, color, result;
+  if (human.alive && !ai.alive) { msg = "You Win!"; color = "#66bb6a"; result = "win"; }
+  else if (!human.alive && ai.alive) { msg = "You Lose"; color = "#ef5350"; result = "loss"; }
+  else { msg = (!human.alive && !ai.alive) ? "Draw" : "Time Up - Draw"; color = "#ffa726"; result = "draw"; }
+
+  matchHistory.unshift({
+    result,
+    opponent: strategies[currentStrategyIdx]?.name || "AI",
+    ticks: tickCount,
+  });
+  renderMatchHistory();
+
+  overlay.innerHTML = `
+    <h1 style="color:${color}">${msg}</h1>
+    <p>Tick ${tickCount} / ${MAX_TICKS}</p>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="primary" onclick="restart()">Play Again</button>
+      <button onclick="saveReplay()">Save Replay</button>
+    </div>
+  `;
+}
+
+function renderMatchHistory() {
+  const el = document.getElementById("matchHistory");
+  if (matchHistory.length === 0) { el.innerHTML = "No matches yet"; return; }
+
+  const wins = matchHistory.filter(m => m.result === "win").length;
+  const losses = matchHistory.filter(m => m.result === "loss").length;
+  const draws = matchHistory.filter(m => m.result === "draw").length;
+
+  let html = `<div class="match-summary">
+    <span class="count win">${wins}W</span>
+    <span class="count loss">${losses}L</span>
+    <span class="count draw">${draws}D</span>
+    <span style="color:#555">${matchHistory.length} played</span>
+  </div>`;
+
+  html += `<table class="match-table">`;
+  matchHistory.slice(0, 20).forEach((m, i) => {
+    const rLabel = m.result === "win" ? "WIN" : m.result === "loss" ? "LOSS" : "DRAW";
+    html += `<tr>
+      <td class="num">${matchHistory.length - i}</td>
+      <td class="result ${m.result}">${rLabel}</td>
+      <td class="opponent">${m.opponent}</td>
+      <td class="ticks">${m.ticks} ticks</td>
+    </tr>`;
+  });
+  html += `</table>`;
+  el.innerHTML = html;
+}
+
+function updateStatsUI() {
+  document.getElementById("tickVal").textContent = tickCount;
+  const hs = document.getElementById("humanStatus");
+  const as = document.getElementById("aiStatus");
+  hs.textContent = human.alive ? "Alive" : "Dead";
+  hs.style.color = human.alive ? "#66bb6a" : "#ef5350";
+  as.textContent = ai.alive ? "Alive" : "Dead";
+  as.style.color = ai.alive ? "#66bb6a" : "#ef5350";
+}
+
+function updateScoreUI() {
+  document.getElementById("humanScore").textContent = humanScore;
+  document.getElementById("aiScore").textContent = aiScore;
+}
+
+function draw() {
+  const w = BOARD_W, h = BOARD_H;
+  canvas.width = w; canvas.height = h;
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = GRID_COLOR;
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  const fy = y => h - y;
+
+  function drawTrail(points, color) {
+    if (!points || points.length < 2) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i++) {
+      const pt = points[i];
+      if (pt === null) { started = false; continue; }
+      if (!started) { ctx.moveTo(pt[0], fy(pt[1])); started = true; continue; }
+      const prev = points[i - 1];
+      if (prev === null) { ctx.moveTo(pt[0], fy(pt[1])); continue; }
+      ctx.lineTo(pt[0], fy(pt[1]));
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  drawTrail(humanTrail, COLORS.human);
+  drawTrail(aiTrail, COLORS.ai);
+
+  function drawHead(player, color, label) {
+    if (!player) return;
+    const px = player.x, py = fy(player.y);
+    if (!player.alive) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(px - 6, py - 6); ctx.lineTo(px + 6, py + 6);
+      ctx.moveTo(px + 6, py - 6); ctx.lineTo(px - 6, py + 6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    const rad = -player.direction * Math.PI / 180;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + Math.cos(rad) * 12, py + Math.sin(rad) * 12);
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.font = "bold 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(label, px, py - 10);
+  }
+
+  drawHead(human, COLORS.human, "You");
+  drawHead(ai, COLORS.ai, strategies[currentStrategyIdx]?.name || "AI");
+}
+
+function restart() {
+  const overlay = document.getElementById("overlay");
+  overlay.classList.remove("active");
+  overlay.innerHTML = "";
+  lastTime = 0;
+  accumulator = 0;
+  initGame();
+  draw();
+  updateStatsUI();
+  if (!gameStarted) gameStarted = true;
+  startGameLoop();
+}
+
+function saveReplay() {
+  const sName = strategies[currentStrategyIdx]?.name || "AI";
+  const data = {
+    game: "kurve",
+    player_names: { p0: "Human", p1: sName },
+    turns: replayTurns,
+    result: {
+      winner: human.alive && !ai.alive ? "p0" : (!human.alive && ai.alive ? "p1" : null),
+      winnerName: human.alive && !ai.alive ? "Human" : (!human.alive && ai.alive ? sName : null),
+      isDraw: (!human.alive && !ai.alive) || (human.alive && ai.alive),
+      ticks: tickCount
+    }
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `kurve-play-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function beginGame() {
+  if (!aiReady) return;
+  if (gameStarted) return;
+  gameStarted = true;
+  const overlay = document.getElementById("overlay");
+  overlay.classList.remove("active");
+  overlay.innerHTML = "";
+  initGame();
+  draw();
+  startGameLoop();
+}
+
+// Input
+document.addEventListener("keydown", (e) => {
+  keysDown[e.key] = true;
+  if (!gameStarted) { beginGame(); return; }
+  if (e.key === "r" || e.key === "R") { restart(); return; }
+  if (e.key === " ") { e.preventDefault(); if (!gameRunning) { restart(); } else { paused = !paused; } return; }
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") e.preventDefault();
+});
+document.addEventListener("keyup", (e) => { keysDown[e.key] = false; });
+canvas.addEventListener("click", beginGame);
+document.getElementById("restartBtn").addEventListener("click", restart);
+document.getElementById("saveReplayBtn").addEventListener("click", saveReplay);
+
+// Game loop
+let lastTime = 0;
+let accumulator = 0;
+let loopRunning = false;
+
+function startGameLoop() {
+  if (loopRunning) return;
+  loopRunning = true;
+  lastTime = 0;
+  accumulator = 0;
+  requestAnimationFrame(gameLoop);
+}
+
+function gameLoop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  const delta = timestamp - lastTime;
+  lastTime = timestamp;
+  accumulator += delta;
+  while (accumulator >= TICK_MS && gameRunning && !paused) {
+    tick();
+    accumulator -= TICK_MS;
+  }
+  if (gameStarted) requestAnimationFrame(gameLoop);
+  else loopRunning = false;
+}
+
+// Init — defer to ensure injected catalog script tag is parsed
+async function init() { await loadCatalog(); draw(); }
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

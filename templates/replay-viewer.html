@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kurve Replay Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a1a; color: #e0e0e0; font-family: system-ui, sans-serif; }
+  .container { display: flex; height: 100vh; }
+  .sidebar { width: 300px; padding: 16px; overflow-y: auto; border-right: 1px solid #333; flex-shrink: 0; }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 16px; overflow: hidden; }
+  h2 { font-size: 16px; margin-bottom: 12px; color: #4fc3f7; }
+  h3 { font-size: 13px; margin: 12px 0 6px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  label { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; font-size: 13px; }
+  input[type=range] { width: 140px; accent-color: #4fc3f7; }
+  input[type=checkbox] { accent-color: #4fc3f7; }
+  button { background: #1a1a30; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #2a2a40; }
+  button.active { background: #4fc3f7; color: #000; border-color: #4fc3f7; }
+  .controls { display: flex; gap: 8px; align-items: center; margin: 8px 0; width: 100%; max-width: 800px; }
+  .controls input[type=range] { flex: 1; }
+  .info { font-size: 12px; color: #888; margin: 4px 0; }
+  .alert { background: rgba(255,87,34,0.15); border: 1px solid rgba(255,87,34,0.3); padding: 8px 12px; border-radius: 4px; font-size: 12px; margin: 8px 0; }
+  canvas { border: 2px solid #333; border-radius: 4px; cursor: crosshair; }
+  .stat { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; border-bottom: 1px solid #1a1a30; }
+  .stat .val { color: #4fc3f7; font-weight: 600; }
+  .legend { display: flex; gap: 12px; margin: 8px 0; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .section { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #222; }
+  .drop-zone { border: 2px dashed #444; border-radius: 8px; padding: 40px; text-align: center; color: #666; margin: 20px; }
+  .drop-zone.over { border-color: #4fc3f7; color: #4fc3f7; }
+  .match-bar { display: none; align-items: center; gap: 8px; margin: 4px 0; width: 100%; max-width: 800px; justify-content: center; }
+  .match-bar.active { display: flex; }
+  .match-bar .game-btn { min-width: 32px; text-align: center; padding: 4px 8px; font-size: 12px; }
+  .match-bar .game-btn.current { background: #4fc3f7; color: #000; border-color: #4fc3f7; font-weight: 700; }
+  .match-bar .game-btn.won-p0 { border-bottom: 3px solid #4fc3f7; }
+  .match-bar .game-btn.won-p1 { border-bottom: 3px solid #ffa726; }
+  .match-bar .game-btn.draw { border-bottom: 3px solid #888; }
+  .match-score { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin: 0 8px; }
+  .transition-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10,10,26,0.92); z-index: 10; align-items: center; justify-content: center; flex-direction: column; gap: 12px; pointer-events: none; }
+  .transition-overlay.show { display: flex; }
+  .transition-overlay .game-label { font-size: 28px; font-weight: 700; color: #4fc3f7; }
+  .transition-overlay .game-result { font-size: 16px; color: #ccc; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="sidebar">
+    <h2>Kurve Replay Viewer</h2>
+    <div id="subtitle" class="info"></div>
+
+    <div class="section">
+      <h3>Display</h3>
+      <label>Trail width <input type="range" id="trailWidth" min="1" max="10" value="3" step="0.5"><span id="trailWidthVal">3</span></label>
+      <label>Head size <input type="range" id="headSize" min="2" max="15" value="5"><span id="headSizeVal">5</span></label>
+      <label>Zoom <input type="range" id="zoom" min="0.5" max="4" value="1" step="0.1"><span id="zoomVal">1.0</span></label>
+      <label>Gap threshold <input type="range" id="gapThreshold" min="3" max="50" value="7"><span id="gapThresholdVal">7</span></label>
+      <label>Trail opacity <input type="range" id="trailOpacity" min="0.1" max="1" value="0.8" step="0.05"><span id="trailOpacityVal">0.8</span></label>
+    </div>
+
+    <div class="section">
+      <h3>Overlays</h3>
+      <label><input type="checkbox" id="showProximity"> Proximity highlight</label>
+      <label>Prox. radius <input type="range" id="proxRadius" min="3" max="30" value="10"><span id="proxRadiusVal">10</span></label>
+      <label><input type="checkbox" id="showCollisionRadius"> Collision radius (3.0)</label>
+      <label><input type="checkbox" id="showGrid" checked> Grid</label>
+      <label><input type="checkbox" id="showDirectionArrow" checked> Direction arrows</label>
+      <label><input type="checkbox" id="showNames" checked> Player names</label>
+      <label><input type="checkbox" id="trailP0" checked> <span id="p0Label" style="color:#4fc3f7">p0</span></label>
+      <label><input type="checkbox" id="trailP1" checked> <span id="p1Label" style="color:#ffa726">p1</span></label>
+    </div>
+
+    <div class="section">
+      <h3>Stats (current tick)</h3>
+      <div id="stats"></div>
+    </div>
+
+    <div id="proximityAlert"></div>
+  </div>
+
+  <div class="main">
+    <div id="matchBar" class="match-bar"></div>
+    <div id="legendBar" class="legend"></div>
+    <div style="position:relative;display:inline-block">
+      <div id="dropZone" class="drop-zone">
+        <p>Loading replay data...</p>
+      </div>
+      <canvas id="canvas" style="display:none"></canvas>
+      <div id="transitionOverlay" class="transition-overlay">
+        <div class="game-result" id="transResult"></div>
+        <div class="game-label" id="transLabel"></div>
+      </div>
+    </div>
+    <div id="controlsBar" class="controls" style="display:none">
+      <button id="playBtn">Play</button>
+      <input type="range" id="tickSlider" min="0" max="0" value="0">
+      <span id="tickLabel" style="font-size:13px;min-width:80px">Tick 0/0</span>
+      <button id="speed1" class="active">1x</button>
+      <button id="speed2">2x</button>
+      <button id="speed4">4x</button>
+      <button id="speed8">8x</button>
+      <button id="stepBack">&#9664;</button>
+      <button id="stepFwd">&#9654;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = ["#4fc3f7", "#ffa726", "#66bb6a", "#ef5350", "#ab47bc", "#26c6da", "#7e57c2", "#ec407a"];
+const BG = "#0a0a1a";
+const GRID_COLOR = "#1a1a30";
+
+let replayData = null;
+let playerNames = {};
+let playerColors = {};
+let turns = [];
+let tick = 0;
+let playing = false;
+let speed = 16;
+let timer = null;
+
+// Match mode (multiple games)
+let matchGames = [];     // array of replay data objects
+let matchIndex = 0;      // current game index
+let matchMode = false;
+// Base transition at 1x speed; scales down with playback speed
+const TRANSITION_BASE_MS = 800;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+// Controls
+const els = {};
+["trailWidth","headSize","zoom","gapThreshold","trailOpacity","proxRadius"].forEach(id => {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(id + "Val");
+  els[id] = el;
+  el.addEventListener("input", () => { valEl.textContent = el.value; draw(); });
+});
+["showProximity","showCollisionRadius","showGrid","showDirectionArrow","showNames","trailP0","trailP1"].forEach(id => {
+  els[id] = document.getElementById(id);
+  els[id].addEventListener("change", draw);
+});
+
+// Speed buttons
+[1,2,4,8].forEach(s => {
+  const btn = document.getElementById("speed" + s);
+  btn.onclick = () => {
+    speed = 16 / s;
+    document.querySelectorAll("[id^=speed]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    if (playing) { clearInterval(timer); startPlay(); }
+  };
+});
+
+// Playback
+document.getElementById("playBtn").onclick = () => {
+  playing = !playing;
+  document.getElementById("playBtn").textContent = playing ? "Pause" : "Play";
+  if (playing) startPlay(); else clearInterval(timer);
+};
+document.getElementById("stepBack").onclick = () => { pause(); setTick(Math.max(0, tick - 1)); };
+document.getElementById("stepFwd").onclick = () => { pause(); setTick(Math.min(turns.length - 1, tick + 1)); };
+document.getElementById("tickSlider").oninput = (e) => { pause(); setTick(+e.target.value); };
+
+function pause() {
+  playing = false;
+  document.getElementById("playBtn").textContent = "Play";
+  clearInterval(timer);
+}
+
+function startPlay() {
+  clearInterval(timer);
+  timer = setInterval(() => {
+    if (tick >= turns.length - 1) {
+      if (matchMode && matchIndex < matchGames.length - 1) {
+        clearInterval(timer);
+        advanceToNextGame();
+        return;
+      }
+      pause();
+      return;
+    }
+    setTick(tick + 1);
+  }, speed);
+}
+
+function advanceToNextGame() {
+  // Show transition overlay with result of current game
+  const overlay = document.getElementById("transitionOverlay");
+  const resultEl = document.getElementById("transResult");
+  const labelEl = document.getElementById("transLabel");
+
+  const result = replayData.result;
+  let resultText = "";
+  if (result) {
+    if (result.isDraw) resultText = "Draw";
+    else resultText = `${result.winnerName || "?"} wins`;
+  }
+  resultEl.textContent = resultText;
+  labelEl.textContent = `Game ${matchIndex + 2} of ${matchGames.length}`;
+  overlay.classList.add("show");
+
+  // Scale transition with playback speed (speed=16 is 1x, speed=2 is 8x)
+  const transitionMs = Math.max(100, TRANSITION_BASE_MS * (speed / 16));
+  setTimeout(() => {
+    overlay.classList.remove("show");
+    switchToGame(matchIndex + 1);
+    playing = true;
+    document.getElementById("playBtn").textContent = "Pause";
+    startPlay();
+  }, transitionMs);
+}
+
+function switchToGame(index) {
+  matchIndex = index;
+  loadReplay(matchGames[index], true);
+  updateMatchBar();
+}
+
+function updateMatchBar() {
+  if (!matchMode) return;
+  const bar = document.getElementById("matchBar");
+  bar.innerHTML = "";
+
+  // Count completed games
+  const wins = {};
+  matchGames.forEach((g, i) => {
+    if (i >= matchIndex) return; // only count finished games
+    const r = g.result;
+    if (!r || r.isDraw) return;
+    const wName = r.winnerName || r.winner || "?";
+    wins[wName] = (wins[wName] || 0) + 1;
+  });
+
+  // Player names from first game
+  const names = matchGames[0].player_names || {};
+  const p0Name = names["p0"] || "p0";
+  const p1Name = names["p1"] || "p1";
+
+  const scoreText = `${p0Name} ${wins[p0Name] || 0} - ${wins[p1Name] || 0} ${p1Name}`;
+  const scoreEl = document.createElement("span");
+  scoreEl.className = "match-score";
+  scoreEl.textContent = scoreText;
+
+  // Game buttons
+  matchGames.forEach((g, i) => {
+    const btn = document.createElement("button");
+    btn.className = "game-btn";
+    btn.textContent = i + 1;
+    if (i === matchIndex) btn.classList.add("current");
+
+    // Color code by winner
+    if (i < matchIndex) {
+      const r = g.result;
+      if (r && !r.isDraw) {
+        const wName = r.winnerName || r.winner;
+        if (wName === p0Name) btn.classList.add("won-p0");
+        else if (wName === p1Name) btn.classList.add("won-p1");
+      } else {
+        btn.classList.add("draw");
+      }
+    }
+
+    btn.onclick = () => {
+      pause();
+      switchToGame(i);
+    };
+    bar.appendChild(btn);
+  });
+
+  bar.insertBefore(scoreEl, bar.firstChild);
+}
+
+function setTick(t) {
+  tick = t;
+  document.getElementById("tickSlider").value = t;
+  document.getElementById("tickLabel").textContent = `Tick ${t}/${turns.length - 1}`;
+  draw();
+  updateStats();
+}
+
+function loadReplay(data, skipAutoPlay) {
+  replayData = data;
+  turns = data.turns || [];
+  playerNames = data.player_names || {};
+
+  if (turns.length === 0) {
+    document.getElementById("dropZone").innerHTML = "<p>No turn data in replay.</p>";
+    return;
+  }
+
+  // Assign colors
+  const players = turns[0].board.players;
+  players.forEach((p, i) => { playerColors[p.id] = COLORS[i % COLORS.length]; });
+
+  // Update UI
+  document.getElementById("dropZone").style.display = "none";
+  canvas.style.display = "block";
+  document.getElementById("controlsBar").style.display = "flex";
+
+  const p0Name = playerNames["p0"] || "p0";
+  const p1Name = playerNames["p1"] || "p1";
+  document.getElementById("subtitle").textContent = `${p0Name} vs ${p1Name}`;
+  document.getElementById("p0Label").textContent = p0Name;
+  document.getElementById("p1Label").textContent = p1Name;
+
+  // Legend
+  const legend = document.getElementById("legendBar");
+  legend.innerHTML = "";
+  players.forEach((p, i) => {
+    const name = playerNames[p.id] || p.id;
+    legend.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${COLORS[i]}"></div> ${p.id}: ${name}</div>`;
+  });
+
+  // Result info
+  let subtitleExtra = "";
+  if (matchMode) {
+    subtitleExtra += ` \u2014 Game ${matchIndex + 1}/${matchGames.length}`;
+  }
+  const result = data.result;
+  if (result) {
+    const winner = result.winnerName || (result.isDraw ? "Draw" : "?");
+    subtitleExtra += ` \u2014 ${turns.length} ticks \u2014 Winner: ${winner}`;
+  }
+  document.getElementById("subtitle").textContent += subtitleExtra;
+
+  document.getElementById("tickSlider").max = turns.length - 1;
+  setTick(0);
+  if (!skipAutoPlay) startPlay();
+}
+
+function loadMatch(games) {
+  matchGames = games;
+  matchMode = true;
+  matchIndex = 0;
+
+  const bar = document.getElementById("matchBar");
+  bar.classList.add("active");
+
+  loadReplay(games[0]);
+  updateMatchBar();
+}
+
+function draw() {
+  if (!turns.length) return;
+  const t = turns[tick];
+  const z = +els.zoom.value;
+  const w = t.board.width * z;
+  const h = t.board.height * z;
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
+
+  if (els.showGrid.checked) {
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < w; x += 40 * z) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = 0; y < h; y += 40 * z) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  }
+
+  const fy = y => h - y * z;
+  const trails = t.board.trails;
+  const tw = +els.trailWidth.value;
+  const gt = +els.gapThreshold.value;
+  const opacity = +els.trailOpacity.value;
+
+  // Draw trails
+  for (const [pid, points] of Object.entries(trails)) {
+    if (pid === "p0" && !els.trailP0.checked) continue;
+    if (pid === "p1" && !els.trailP1.checked) continue;
+    if (points.length < 2) continue;
+
+    ctx.strokeStyle = playerColors[pid] || "#888";
+    ctx.lineWidth = tw;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = opacity;
+
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i++) {
+      const pt = points[i];
+      if (pt === null) { started = false; continue; }
+      if (!started) { ctx.moveTo(pt[0] * z, fy(pt[1])); started = true; continue; }
+      const prev = points[i - 1];
+      if (prev === null) { ctx.moveTo(pt[0] * z, fy(pt[1])); continue; }
+      // Fallback distance-based gap detection for old replays without null markers
+      const dist = Math.sqrt((pt[0] - prev[0]) ** 2 + (pt[1] - prev[1]) ** 2);
+      if (dist > gt) {
+        ctx.moveTo(pt[0] * z, fy(pt[1]));
+      } else {
+        ctx.lineTo(pt[0] * z, fy(pt[1]));
+      }
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Proximity highlighting
+  if (els.showProximity.checked) {
+    const pr = +els.proxRadius.value;
+    const p0pts = (trails.p0 || []).filter(p => p !== null);
+    const p1pts = (trails.p1 || []).filter(p => p !== null);
+
+    ctx.globalAlpha = 0.4;
+    for (const pt0 of p0pts) {
+      for (const pt1 of p1pts) {
+        const d = Math.sqrt((pt0[0] - pt1[0]) ** 2 + (pt0[1] - pt1[1]) ** 2);
+        if (d < pr) {
+          const intensity = 1 - d / pr;
+          ctx.fillStyle = `rgba(255, 87, 34, ${intensity * 0.6})`;
+          ctx.beginPath();
+          ctx.arc(pt0[0] * z, fy(pt0[1]), 4 * z / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(pt1[0] * z, fy(pt1[1]), 4 * z / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Player heads
+  for (const player of t.board.players) {
+    const color = playerColors[player.id] || "#888";
+    const px = player.position.x * z;
+    const py = fy(player.position.y);
+    const hs = +els.headSize.value;
+
+    if (!player.alive) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(px - 6, py - 6); ctx.lineTo(px + 6, py + 6);
+      ctx.moveTo(px + 6, py - 6); ctx.lineTo(px - 6, py + 6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      continue;
+    }
+
+    if (els.showCollisionRadius.checked) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(px, py, 3.0 * z, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py, hs, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (els.showDirectionArrow.checked) {
+      const rad = -player.direction * Math.PI / 180;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + Math.cos(rad) * 12, py + Math.sin(rad) * 12);
+      ctx.stroke();
+    }
+
+    if (els.showNames.checked) {
+      ctx.fillStyle = color;
+      ctx.font = `bold ${11 * Math.min(z, 2)}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.fillText(playerNames[player.id] || player.id, px, py - hs - 4);
+    }
+  }
+}
+
+function updateStats() {
+  if (!turns.length) return;
+  const t = turns[tick];
+  const trails = t.board.trails;
+  const players = t.board.players;
+  const p0 = players.find(p => p.id === "p0");
+  const p1 = players.find(p => p.id === "p1");
+  const p0pts = (trails.p0 || []).filter(p => p !== null);
+  const p1pts = (trails.p1 || []).filter(p => p !== null);
+
+  let headDist = "-";
+  if (p0 && p1) {
+    headDist = Math.sqrt((p0.position.x - p1.position.x) ** 2 + (p0.position.y - p1.position.y) ** 2).toFixed(1);
+  }
+
+  let minDist = Infinity, minP0pt = null, minP1pt = null;
+  for (const pt0 of p0pts) {
+    for (const pt1 of p1pts) {
+      const d = Math.sqrt((pt0[0] - pt1[0]) ** 2 + (pt0[1] - pt1[1]) ** 2);
+      if (d < minDist) { minDist = d; minP0pt = pt0; minP1pt = pt1; }
+    }
+  }
+
+  let p1ToP0 = Infinity;
+  if (p1) {
+    for (const pt of p0pts) {
+      const d = Math.sqrt((p1.position.x - pt[0]) ** 2 + (p1.position.y - pt[1]) ** 2);
+      if (d < p1ToP0) p1ToP0 = d;
+    }
+  }
+
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><span>Head distance</span><span class="val">${headDist}</span></div>
+    <div class="stat"><span>Min trail dist</span><span class="val" style="color:${minDist < 10 ? '#ff5722' : '#4fc3f7'}">${minDist === Infinity ? '-' : minDist.toFixed(1)}</span></div>
+    <div class="stat"><span>p1 head\u2192p0 trail</span><span class="val" style="color:${p1ToP0 < 5 ? '#ff5722' : '#4fc3f7'}">${p1ToP0 === Infinity ? '-' : p1ToP0.toFixed(1)}</span></div>
+    <div class="stat"><span>p0 trail points</span><span class="val">${p0pts.length}</span></div>
+    <div class="stat"><span>p1 trail points</span><span class="val">${p1pts.length}</span></div>
+    <div class="stat"><span>p0 pos</span><span class="val">${p0 ? `(${p0.position.x.toFixed(0)},${p0.position.y.toFixed(0)})` : '-'}</span></div>
+    <div class="stat"><span>p1 pos</span><span class="val">${p1 ? `(${p1.position.x.toFixed(0)},${p1.position.y.toFixed(0)})` : '-'}</span></div>
+    <div class="stat"><span>p0 dir</span><span class="val">${p0 ? p0.direction.toFixed(0) + '\u00b0' : '-'}</span></div>
+    <div class="stat"><span>p1 dir</span><span class="val">${p1 ? p1.direction.toFixed(0) + '\u00b0' : '-'}</span></div>
+    <div class="stat"><span>p0 alive</span><span class="val">${p0?.alive ? 'Yes' : 'No'}</span></div>
+    <div class="stat"><span>p1 alive</span><span class="val">${p1?.alive ? 'Yes' : 'No'}</span></div>
+  `;
+
+  const alertEl = document.getElementById("proximityAlert");
+  if (minDist < 10 && minP0pt && minP1pt) {
+    alertEl.innerHTML = `<div class="alert">Trails within <b>${minDist.toFixed(1)}</b> units at (${minP0pt[0]},${minP0pt[1]}) \u2194 (${minP1pt[0]},${minP1pt[1]})</div>`;
+  } else if (p1ToP0 < 10) {
+    alertEl.innerHTML = `<div class="alert">p1 head within <b>${p1ToP0.toFixed(1)}</b> of p0 trail</div>`;
+  } else {
+    alertEl.innerHTML = "";
+  }
+}
+
+// Mouse hover
+canvas.addEventListener("mousemove", (e) => {
+  if (!turns.length) return;
+  const rect = canvas.getBoundingClientRect();
+  const z = +els.zoom.value;
+  const x = ((e.clientX - rect.left) / rect.width * canvas.width) / z;
+  const y = turns[tick].board.height - ((e.clientY - rect.top) / rect.height * canvas.height) / z;
+  canvas.title = `(${x.toFixed(1)}, ${y.toFixed(1)})`;
+});
+
+// Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("playBtn").click(); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); document.getElementById("stepBack").click(); }
+  if (e.key === "ArrowRight") { e.preventDefault(); document.getElementById("stepFwd").click(); }
+  // Match navigation: [ and ] for prev/next game
+  if (matchMode && e.key === "[" && matchIndex > 0) {
+    e.preventDefault(); pause(); switchToGame(matchIndex - 1);
+  }
+  if (matchMode && e.key === "]" && matchIndex < matchGames.length - 1) {
+    e.preventDefault(); pause(); switchToGame(matchIndex + 1);
+  }
+});
+
+// Load data: check for inline data first, then URL param, then drag-and-drop
+(function init() {
+  // 0. Match data (multiple games, injected by CLI)
+  const matchEl = document.getElementById("replay-match-data");
+  if (matchEl) {
+    try {
+      loadMatch(JSON.parse(matchEl.textContent));
+      return;
+    } catch {}
+  }
+
+  // 1. Inline data (injected by CLI)
+  const inlineEl = document.getElementById("replay-data");
+  if (inlineEl) {
+    try {
+      loadReplay(JSON.parse(inlineEl.textContent));
+      return;
+    } catch {}
+  }
+
+  // 2. URL param: ?file=path or ?api=replay_id
+  const params = new URLSearchParams(location.search);
+  const fileParam = params.get("file");
+  const apiParam = params.get("api");
+
+  if (fileParam) {
+    fetch(fileParam)
+      .then(r => r.json())
+      .then(loadReplay)
+      .catch(() => {
+        document.getElementById("dropZone").innerHTML = `<p>Failed to load: ${fileParam}</p>`;
+      });
+    return;
+  }
+
+  if (apiParam) {
+    const apiBase = params.get("api_base") || "https://mattarderne--snake-arena-arenaapi-replay.modal.run";
+    fetch(`${apiBase}?game_id=${encodeURIComponent(apiParam)}`)
+      .then(r => r.json())
+      .then(loadReplay)
+      .catch(() => {
+        document.getElementById("dropZone").innerHTML = `<p>Failed to load replay: ${apiParam}</p>`;
+      });
+    return;
+  }
+
+  // 3. Drag and drop
+  const dz = document.getElementById("dropZone");
+  dz.innerHTML = "<p>Drag & drop a replay JSON file here</p><p style='margin-top:8px;font-size:11px;color:#555'>Or open with ?file=path.json or ?api=replay_id</p>";
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("over");
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { loadReplay(JSON.parse(reader.result)); }
+      catch { dz.innerHTML = "<p>Invalid JSON file</p>"; }
+    };
+    reader.readAsText(file);
+  });
+})();
+</script>
+</body>
+</html>
