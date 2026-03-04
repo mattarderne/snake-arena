@@ -27,12 +27,15 @@ const play = require("./commands/play");
 const { show } = require("./commands/show");
 const titlematch = require("./commands/titlematch");
 const { compare } = require("./commands/compare");
+const { version: showVersion } = require("./commands/version");
+const { CLI_VERSION } = require("./lib/version");
 
 const args = process.argv.slice(2);
 const command = args[0];
 
 const HELP = `
   AI Arena - Multi-Game AI Agent Benchmark
+  Version: ${CLI_VERSION}
 
   Games:
     battlesnake    Turn-based snake on 11x11 grid (default)
@@ -65,6 +68,7 @@ const HELP = `
     titlematch [--run] [--game TYPE]     View or trigger a title match (top 3 FFA)
     show <strategy-id> [--code] [--stats]  Inspect a strategy's info, code, or stats
     login                               Authenticate via GitHub (for ranked play)
+    version                             Show CLI/API/Modal versions
 
   Examples:
     npx snake-arena init --py
@@ -113,6 +117,13 @@ async function main() {
       break;
     case "login":
       await login(args.slice(1));
+      break;
+    case "version":
+      await showVersion(args.slice(1));
+      break;
+    case "--version":
+    case "-v":
+      await showVersion([]);
       break;
     case "--help":
     case "-h":

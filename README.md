@@ -68,6 +68,10 @@ def decide_move(data: dict) -> str:
 
 All commands support `--help` for detailed usage info (e.g. `snake-arena submit --help`).
 
+### `version [--json]`
+
+Prints local CLI version, API base URL, and remote Modal backend version.
+
 ### `init [--kurve] [--py|--js|--advanced]`
 
 Creates a starter strategy file in your current directory.

@@ -3,7 +3,8 @@
  */
 
 const fs = require("fs");
-const { testStrategy } = require("../lib/api");
+const { API_BASE, testStrategy } = require("../lib/api");
+const { CLI_VERSION } = require("../lib/version");
 
 const USAGE = `
   Usage: snake-arena compare <a.py|a.js> <b.py|b.js> [flags]
@@ -155,6 +156,10 @@ function stdev(arr, m) {
   return Math.sqrt(v);
 }
 
+function modalVersionFrom(data) {
+  return data?.versions?.modal_backend || "unknown";
+}
+
 async function runBenchmark(filePath, language, code, game, parsed) {
   const response = await testStrategy(code, language, game, {
     opponentIds: parsed.opponents.length > 0 ? parsed.opponents : undefined,
@@ -276,6 +281,12 @@ async function compare(args) {
   const pValue = twoSidedSignPvalue(betterA, betterB);
 
   const output = {
+    versions: {
+      cli: CLI_VERSION,
+      api_base: API_BASE,
+      modal_a: modalVersionFrom(aBench.data),
+      modal_b: modalVersionFrom(bBench.data),
+    },
     game,
     candidate_a: parsed.aFile,
     candidate_b: parsed.bFile,
@@ -308,6 +319,13 @@ async function compare(args) {
     return;
   }
 
+  console.log("");
+  console.log(
+    `  Versions: cli=${CLI_VERSION}`
+    + ` | modal(A)=${output.versions.modal_a}`
+    + ` | modal(B)=${output.versions.modal_b}`
+    + ` | api=${API_BASE}`
+  );
   console.log("");
   console.log(`  Candidate A: ${parsed.aFile}`);
   console.log(`  Candidate B: ${parsed.bFile}`);

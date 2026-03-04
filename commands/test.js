@@ -4,7 +4,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { testStrategy, getReplay } = require("../lib/api");
+const { API_BASE, testStrategy, getReplay } = require("../lib/api");
+const { CLI_VERSION } = require("../lib/version");
 const { openReplayViewer, openMatchViewer } = require("../lib/viewer");
 
 const USAGE = `
@@ -146,6 +147,10 @@ function toPercent(v) {
   return `${Math.round(v * 100)}%`;
 }
 
+function modalVersionFrom(data) {
+  return data?.versions?.modal_backend || "unknown";
+}
+
 function printLossDiagnostics(row) {
   const diag = row.loss_diagnostics?.p0 || row.loss_diagnostics?.sub;
   if (!diag || !diag.reason) return;
@@ -253,6 +258,7 @@ async function test(args) {
   if (data?.ok === false) {
     const err = data.error || {};
     console.error(`Error [${err.code || "UNKNOWN"}]: ${err.message || "Test failed"}`);
+    console.error(`Versions: cli=${CLI_VERSION} modal=${modalVersionFrom(data)} api=${API_BASE}`);
     process.exit(1);
   }
   if (!data || (data.ok !== true && !data.summary)) {
@@ -267,6 +273,7 @@ async function test(args) {
 
   const summary = data.summary || {};
   console.log("");
+  console.log(`  Versions: cli=${CLI_VERSION} modal=${modalVersionFrom(data)} api=${API_BASE}`);
   console.log(
     `  Summary: ${summary.wins || 0}W-${summary.losses || 0}L-${summary.draws || 0}D`
     + ` | games=${summary.games || 0}`
