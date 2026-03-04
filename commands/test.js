@@ -1,27 +1,29 @@
 /**
- * `snake-arena test` - Test a strategy locally or via cloud.
- *
- * Supports both Battlesnake and Kurve games.
- * After a cloud test, opens the replay in a local viewer (or --cloud for web viewer).
+ * `snake-arena test` - Deterministic benchmark testing against fixed seeds/opponents.
  */
 
 const fs = require("fs");
 const path = require("path");
-const { detectPython, detectBattlesnake } = require("../lib/detect");
-const { runLocalGame } = require("../lib/local-runner");
-const { testStrategy } = require("../lib/api");
-const { openReplayViewer } = require("../lib/viewer");
+const { testStrategy, getReplay } = require("../lib/api");
+const { openReplayViewer, openMatchViewer } = require("../lib/viewer");
 
 const USAGE = `
   Usage: snake-arena test [file] [flags]
 
-  Test a strategy locally or via cloud. Opens a replay viewer after cloud tests.
+  Run deterministic benchmark tests in the cloud.
 
   Flags:
-    --game TYPE       Game type: battlesnake or kurve
-    --view            Open replay in browser after test
-    --cloud           Open replay in web viewer instead of locally
-    --vs ID           Test against a specific strategy by ID
+    --game TYPE         Game type: battlesnake or kurve
+    --vs A,B            Opponent IDs (comma-separated). May be repeated.
+    --count N           Repeat each seed set N times per opponent (default: 1)
+    --seed N            Base seed (used when --seeds omitted)
+    --seeds A,B,C       Explicit seed set
+    --games N           Number of sequential seeds from --seed (default: 1)
+    --trace             Include per-turn decision traces (if strategy provides them)
+    --trace-sample N    Keep every Nth turn in trace output (default: 1)
+    --view              Open returned replay artifacts in local viewer
+    --save-dir DIR      Save replay artifacts as local JSON files
+    --json              Print raw benchmark response
 `;
 
 function detectLanguage(filePath) {
@@ -46,36 +48,150 @@ function validateEntrypoint(code, language) {
   return "Unsupported language";
 }
 
+function parseIntFlag(args, name, fallback) {
+  const idx = args.indexOf(name);
+  if (idx >= 0 && args[idx + 1]) {
+    const n = parseInt(args[idx + 1], 10);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  const eq = args.find((a) => a.startsWith(`${name}=`));
+  if (eq) {
+    const n = parseInt(eq.split("=")[1], 10);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function parseSeeds(raw) {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n));
+}
+
 function parseArgs(args) {
   let filePath = null;
   let game = null;
-  let cloud = false;
   let view = false;
-  let vs = null;
+  let saveDir = null;
+  let json = false;
+  let trace = false;
+  const opponents = [];
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--game" && args[i + 1]) {
+    const arg = args[i];
+    if (arg === "--game" && args[i + 1]) {
       game = args[++i];
-    } else if (args[i] === "--cloud") {
-      cloud = true;
-    } else if (args[i] === "--view") {
+    } else if (arg === "--vs" && args[i + 1]) {
+      opponents.push(...args[++i].split(",").map((s) => s.trim()).filter(Boolean));
+    } else if (arg.startsWith("--vs=")) {
+      opponents.push(...arg.slice("--vs=".length).split(",").map((s) => s.trim()).filter(Boolean));
+    } else if (arg === "--view") {
       view = true;
-    } else if (args[i] === "--vs" && args[i + 1]) {
-      vs = args[++i];
-    } else if (!args[i].startsWith("-")) {
-      filePath = args[i];
+    } else if (arg === "--save-dir" && args[i + 1]) {
+      saveDir = args[++i];
+    } else if (arg === "--json") {
+      json = true;
+    } else if (arg === "--trace") {
+      trace = true;
+    } else if (!arg.startsWith("-")) {
+      filePath = arg;
     }
   }
 
-  return { filePath, game, cloud, view, vs };
+  const seedsArg = (() => {
+    const idx = args.indexOf("--seeds");
+    if (idx >= 0 && args[idx + 1]) return args[idx + 1];
+    const eq = args.find((a) => a.startsWith("--seeds="));
+    return eq ? eq.split("=")[1] : null;
+  })();
+
+  return {
+    filePath,
+    game,
+    opponents: Array.from(new Set(opponents)),
+    count: parseIntFlag(args, "--count", 1),
+    seed: parseIntFlag(args, "--seed", null),
+    seeds: parseSeeds(seedsArg),
+    games: parseIntFlag(args, "--games", 1),
+    trace,
+    traceSample: parseIntFlag(args, "--trace-sample", 1),
+    view,
+    saveDir,
+    json,
+  };
 }
 
-function viewReplay(replayData, cloud) {
-  if (cloud) {
-    console.log("  (Cloud viewer not available for test results — replays are not persisted)");
-    return;
+function pickDefaultFile(game) {
+  if (game === "kurve") {
+    if (fs.existsSync("kurve.py")) return "kurve.py";
+    if (fs.existsSync("kurve.js")) return "kurve.js";
   }
-  openReplayViewer(replayData, { prefix: "replay" });
+  if (fs.existsSync("snake.py")) return "snake.py";
+  if (fs.existsSync("snake.js")) return "snake.js";
+  if (fs.existsSync("kurve.py")) return "kurve.py";
+  if (fs.existsSync("kurve.js")) return "kurve.js";
+  return null;
+}
+
+function resolveGame(filePath, explicitGame) {
+  if (explicitGame) return explicitGame;
+  return filePath.toLowerCase().includes("kurve") ? "kurve" : "battlesnake";
+}
+
+function toPercent(v) {
+  return `${Math.round(v * 100)}%`;
+}
+
+function printLossDiagnostics(row) {
+  const diag = row.loss_diagnostics?.p0 || row.loss_diagnostics?.sub;
+  if (!diag || !diag.reason) return;
+  const pos = diag.position ? ` @ (${diag.position.x}, ${diag.position.y})` : "";
+  const heading = diag.heading != null ? ` heading ${diag.heading}` : "";
+  console.log(
+    `      loss: ${diag.reason} turn ${diag.turn ?? "?"}${pos}${heading}`
+  );
+}
+
+async function loadReplayArtifacts(ids) {
+  const replays = [];
+  for (const id of ids) {
+    try {
+      const resp = await getReplay(id);
+      const data = resp.data;
+      if (
+        data &&
+        !data.error &&
+        (Array.isArray(data.turns) || Array.isArray(data.frames))
+      ) {
+        replays.push(data);
+      }
+    } catch {
+      // ignore individual failures
+    }
+  }
+  return replays;
+}
+
+async function saveReplayArtifacts(ids, saveDir) {
+  fs.mkdirSync(saveDir, { recursive: true });
+  let saved = 0;
+  for (const id of ids) {
+    try {
+      const resp = await getReplay(id);
+      if (resp.data && !resp.data.error) {
+        const outPath = path.join(saveDir, `${id}.json`);
+        fs.writeFileSync(outPath, JSON.stringify(resp.data, null, 2));
+        saved++;
+      }
+    } catch {
+      // ignore individual failures
+    }
+  }
+  return saved;
 }
 
 async function test(args) {
@@ -84,23 +200,13 @@ async function test(args) {
     return;
   }
 
-  let { filePath, game, cloud, view, vs } = parseArgs(args);
+  const parsed = parseArgs(args);
+  let filePath = parsed.filePath || pickDefaultFile(parsed.game);
 
-  // Auto-detect file
   if (!filePath) {
-    if (game === "kurve") {
-      if (fs.existsSync("kurve.py")) filePath = "kurve.py";
-      else if (fs.existsSync("kurve.js")) filePath = "kurve.js";
-    } else {
-      if (fs.existsSync("snake.py")) filePath = "snake.py";
-      else if (fs.existsSync("snake.js")) filePath = "snake.js";
-    }
-    if (!filePath) {
-      console.error("No strategy file found. Specify a file or run `snake-arena init` first.");
-      process.exit(1);
-    }
+    console.error("No strategy file found. Specify a file or run `snake-arena init` first.");
+    process.exit(1);
   }
-
   if (!fs.existsSync(filePath)) {
     console.error(`File not found: ${filePath}`);
     process.exit(1);
@@ -111,6 +217,7 @@ async function test(args) {
     console.error("Could not detect language. File must end with .py or .js");
     process.exit(1);
   }
+
   const code = fs.readFileSync(filePath, "utf-8");
   const entryErr = validateEntrypoint(code, language);
   if (entryErr) {
@@ -118,111 +225,127 @@ async function test(args) {
     process.exit(1);
   }
 
-  // Auto-detect game from filename if not specified
-  if (!game) {
-    game = filePath.includes("kurve") ? "kurve" : "battlesnake";
+  const game = resolveGame(filePath, parsed.game);
+  const gameName = game === "kurve" ? "Kurve" : "Battlesnake";
+  const seeds = parsed.seeds.length > 0 ? parsed.seeds : undefined;
+
+  if (parsed.count < 1 || parsed.games < 1 || parsed.traceSample < 1) {
+    console.error("Error: --count, --games, and --trace-sample must be >= 1");
+    process.exit(1);
   }
 
-  const gameName = game === "kurve" ? "Kurve" : "Battlesnake";
-  console.log(`Testing ${filePath} (${language}, ${gameName})...`);
-  console.log("");
+  console.log(`Benchmarking ${filePath} (${language}, ${gameName})...`);
 
-  // Kurve: always use cloud (no local battlesnake CLI needed)
-  if (game === "kurve") {
-    console.log("Running in the cloud...");
-    console.log("");
+  const opts = {
+    opponentIds: parsed.opponents.length > 0 ? parsed.opponents : undefined,
+    count: parsed.count,
+    seed: parsed.seed,
+    seeds,
+    games: parsed.games,
+    trace: parsed.trace,
+    traceSample: parsed.traceSample,
+    persistReplays: true,
+  };
 
-    const opts = {};
-    if (vs) opts.opponentId = vs;
-    const response = await testStrategy(code, language, game, opts);
+  const response = await testStrategy(code, language, game, opts);
+  const data = response.data;
 
-    if (response.data.error) {
-      console.error(`Error: ${response.data.error}`);
-      process.exit(1);
-    }
+  if (data?.ok === false) {
+    const err = data.error || {};
+    console.error(`Error [${err.code || "UNKNOWN"}]: ${err.message || "Test failed"}`);
+    process.exit(1);
+  }
+  if (!data || (data.ok !== true && !data.summary)) {
+    console.error("Error: unexpected benchmark response");
+    process.exit(1);
+  }
 
-    const result = response.data;
-    const icon =
-      result.winner === "sub" ? "WIN" : result.winner === "draw" ? "DRAW" : "LOSS";
-    const oppName = result.opponent_name || (vs ? vs : "Random Kurve opponent");
-    console.log(`  Result: ${icon} (${result.turns} ticks) vs ${oppName}`);
-
-    if (result.warning) {
-      console.log("");
-      console.log(`  \u26a0 ${result.warning}`);
-    }
-
-    // Open replay viewer if --view flag is set
-    if (view && result.replay_data) {
-      viewReplay(result.replay_data, cloud);
-    }
-
-    if (icon === "WIN" && !result.warning) {
-      console.log(`\nLooking good! Try: npx snake-arena submit ${filePath} --game kurve`);
-    } else if (icon === "WIN" && result.warning) {
-      console.log(`\nYou won, but the game may have been invalid. Check your decide_move() for errors.`);
-    }
+  if (parsed.json) {
+    console.log(JSON.stringify(data, null, 2));
     return;
   }
 
-  // Battlesnake: try local test first
-  const pythonBin = detectPython();
-  const battlesnakeBin = detectBattlesnake();
+  const summary = data.summary || {};
+  console.log("");
+  console.log(
+    `  Summary: ${summary.wins || 0}W-${summary.losses || 0}L-${summary.draws || 0}D`
+    + ` | games=${summary.games || 0}`
+    + ` | win_rate=${toPercent(summary.win_rate || 0)}`
+    + ` | avg_score=${(summary.avg_score ?? 0).toFixed(3)}`
+    + ` | non_game_errors=${summary.non_game_errors || 0}`
+  );
+  console.log(`  Seeds: ${(data.seeds || []).join(", ") || "(none)"}`);
+  console.log(`  Count per seed set: ${data.count || 1}`);
 
-  if (pythonBin && battlesnakeBin) {
-    console.log("Running locally (python + battlesnake CLI detected)");
+  if (Array.isArray(data.by_opponent) && data.by_opponent.length > 0) {
     console.log("");
+    console.log("  Matchup Matrix:");
+    for (const row of data.by_opponent) {
+      console.log(
+        `    ${row.opponent_name} [${row.opponent_style}]`
+        + ` -> ${row.wins}W-${row.losses}L-${row.draws}D`
+        + ` (${toPercent(row.win_rate || 0)} WR, errors=${row.errors || 0})`
+      );
+    }
+  }
 
-    const opponentPath = path.join(__dirname, "..", "templates", "random_valid.py");
-    const results = [];
-
-    for (let i = 0; i < 3; i++) {
-      process.stdout.write(`  Game ${i + 1}/3... `);
-      try {
-        const result = await runLocalGame(
-          filePath, language, pythonBin, battlesnakeBin, opponentPath
-        );
-        results.push(result);
-        const icon = result.winner === "you" ? "W" : result.winner === "draw" ? "D" : "L";
-        console.log(`${icon} (${result.turns} turns)`);
-      } catch (err) {
-        console.log(`Error: ${err.message}`);
-        results.push({ winner: "error", turns: 0 });
+  if (Array.isArray(data.results) && data.results.length > 0) {
+    console.log("");
+    console.log("  Per-Game:");
+    for (const row of data.results) {
+      const icon = row.winner === "sub" ? "W" : row.winner === "opp" ? "L" : "D";
+      console.log(
+        `    ${icon} vs ${row.opponent_name} [seed=${row.base_seed}, run=${row.repeat}]`
+        + ` (${row.turns} turns)`
+        + (row.artifact_id ? ` artifact=${row.artifact_id}` : "")
+      );
+      if (icon === "L") {
+        printLossDiagnostics(row);
+      }
+      if (parsed.trace && Array.isArray(row.decision_traces) && row.decision_traces.length > 0) {
+        const sample = row.decision_traces
+          .filter((t) => t.player_id === "p0")
+          .slice(0, 5);
+        for (const t of sample) {
+          const alts = (t.alternatives || [])
+            .slice(0, 2)
+            .map((a) => `${a.move}:${a.score == null ? "?" : a.score}`)
+            .join(", ");
+          const features = t.feature_scores
+            ? Object.entries(t.feature_scores).slice(0, 3).map(([k, v]) => `${k}=${v}`).join(", ")
+            : "";
+          console.log(
+            `      trace t=${t.turn} move=${t.move} alt=[${alts}]`
+            + (features ? ` features={${features}}` : "")
+          );
+        }
       }
     }
+  }
 
-    const wins = results.filter((r) => r.winner === "you").length;
-    const losses = results.filter((r) => r.winner === "opponent").length;
-    const draws = results.filter((r) => r.winner === "draw").length;
-
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
     console.log("");
-    console.log(`Results: ${wins}W-${losses}L-${draws}D vs Random opponent`);
-    if (wins >= 2) {
-      console.log("Looking good! Try: npx snake-arena submit " + filePath);
-    } else {
-      console.log("Tip: Make sure your snake avoids walls and other snake bodies.");
+    console.log("  Non-Game Errors:");
+    for (const err of data.errors) {
+      console.log(
+        `    ${err.code} vs ${err.opponent_name} [seed=${err.base_seed}, run=${err.repeat}]: ${err.message}`
+      );
     }
-  } else {
-    // Cloud fallback
-    console.log("Local testing unavailable (need python3 + battlesnake CLI).");
-    console.log("Running in the cloud...");
-    console.log("");
+  }
 
-    const code = fs.readFileSync(filePath, "utf-8");
-    const bsOpts = {};
-    if (vs) bsOpts.opponentId = vs;
-    const response = await testStrategy(code, language, game, bsOpts);
+  const replayIds = Array.isArray(data.replay_ids) ? data.replay_ids : [];
+  if (parsed.saveDir && replayIds.length > 0) {
+    const saved = await saveReplayArtifacts(replayIds, path.resolve(parsed.saveDir));
+    console.log(`\n  Saved ${saved}/${replayIds.length} replay artifacts to ${path.resolve(parsed.saveDir)}`);
+  }
 
-    if (response.data.error) {
-      console.error(`Error: ${response.data.error}`);
-      process.exit(1);
+  if (parsed.view && replayIds.length > 0) {
+    const replayData = await loadReplayArtifacts(replayIds.slice(0, 20));
+    if (replayData.length === 1) {
+      openReplayViewer(replayData[0], { prefix: "replay" });
+    } else if (replayData.length > 1) {
+      openMatchViewer(replayData, { prefix: "benchmark" });
     }
-
-    const result = response.data;
-    const icon =
-      result.winner === "sub" ? "WIN" : result.winner === "draw" ? "DRAW" : "LOSS";
-    const bsOppName = result.opponent_name || (vs ? vs : "Random opponent");
-    console.log(`  Result: ${icon} (${result.turns} turns) vs ${bsOppName}`);
   }
 }
 

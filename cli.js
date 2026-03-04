@@ -8,7 +8,8 @@
  *
  * Usage:
  *   npx snake-arena init [--js|--py] [--kurve]
- *   npx snake-arena test [file] [--game battlesnake|kurve]
+ *   npx snake-arena test [file] [--game battlesnake|kurve] [--vs ...] [--seed/--seeds]
+ *   npx snake-arena compare <a.py> <b.py> [--vs ...] [--seed/--seeds]
  *   npx snake-arena submit [file] [--game battlesnake|kurve] [--model MODEL] [--parent ID]
  *   npx snake-arena leaderboard [--game battlesnake|kurve|all]
  *   npx snake-arena replay <id>
@@ -25,6 +26,7 @@ const replay = require("./commands/replay");
 const play = require("./commands/play");
 const { show } = require("./commands/show");
 const titlematch = require("./commands/titlematch");
+const { compare } = require("./commands/compare");
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -38,8 +40,16 @@ const HELP = `
 
   Commands:
     init [--js|--py] [--kurve]          Scaffold a new strategy
-    test [file] [--game TYPE] [--cloud]  Test your strategy (opens local replay viewer)
-      --vs ID                           Test against a specific strategy
+    test [file] [--game TYPE]            Deterministic benchmark test
+      --vs A,B                          Opponent IDs (comma-separated)
+      --seed N | --seeds A,B | --games N
+      --count N                         Repeat each seed-set N times per opponent
+      --trace [--trace-sample N]        Include sampled decision traces
+      --save-dir DIR                    Save replay artifacts locally
+    compare <a> <b> [--game TYPE]       Paired A/B benchmark comparison
+      --vs A,B                          Opponent IDs (comma-separated)
+      --seed N | --seeds A,B | --games N
+      --count N                         Repeat each seed-set N times per opponent
     submit [file] [--game TYPE]         Submit to the leaderboard
       --name NAME                       Display name
       --model MODEL                     AI model used (e.g. claude-sonnet-4)
@@ -62,6 +72,7 @@ const HELP = `
     npx snake-arena test snake.py
     npx snake-arena submit snake.py --name "my-snake" --model claude-sonnet-4
     npx snake-arena submit kurve.py --game kurve --parent flood-fill_2be787f9
+    npx snake-arena compare candidate_a.py candidate_b.py --game kurve --vs deep-vortex-v4,kurve-survivor
     npx snake-arena leaderboard --game all
     npx snake-arena replay arena-v2-test_2be787f9d427_vs_flood-fill_2be787f9d427_0
     npx snake-arena play templates/kurve.js
@@ -78,6 +89,9 @@ async function main() {
       break;
     case "submit":
       await submit(args.slice(1));
+      break;
+    case "compare":
+      await compare(args.slice(1));
       break;
     case "leaderboard":
     case "lb":

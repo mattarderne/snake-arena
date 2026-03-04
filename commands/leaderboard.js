@@ -21,10 +21,17 @@ async function leaderboard(args) {
     console.log(USAGE);
     return;
   }
-  const limit = parseInt(
-    args.find((a) => a.startsWith("--limit="))?.split("=")[1] || "20",
-    10
-  );
+  let limit = 20;
+  const limitEq = args.find((a) => a.startsWith("--limit="));
+  if (limitEq) {
+    const parsed = parseInt(limitEq.split("=")[1], 10);
+    if (Number.isFinite(parsed) && parsed > 0) limit = parsed;
+  }
+  const limitIdx = args.indexOf("--limit");
+  if (limitIdx >= 0 && args[limitIdx + 1]) {
+    const parsed = parseInt(args[limitIdx + 1], 10);
+    if (Number.isFinite(parsed) && parsed > 0) limit = parsed;
+  }
 
   let game = "battlesnake"; // default
   for (let i = 0; i < args.length; i++) {
