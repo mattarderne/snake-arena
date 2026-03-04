@@ -256,6 +256,18 @@ async function submit(args) {
     name = filePath.replace(/\.(py|js)$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
   }
 
+  // Preview what the backend will do to the name (mirrors sanitize_name in modal_app.py)
+  const stripped = name.replace(/[^a-zA-Z0-9_-]/g, "") || "unnamed";
+  const finalName = stripped.slice(0, 25);
+  if (finalName !== name) {
+    const reasons = [];
+    if (stripped !== name) reasons.push("removed invalid characters — only a-z, A-Z, 0-9, _ and - allowed");
+    if (stripped.length > 25) reasons.push(`truncated from ${stripped.length} to 25 chars`);
+    console.log(`Note: name will appear as "${finalName}"`);
+    for (const r of reasons) console.log(`  (${r})`);
+    console.log("");
+  }
+
   // Generate ownership token
   const ownershipToken = crypto.randomBytes(6).toString("hex");
 
