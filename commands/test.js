@@ -92,13 +92,25 @@ function parseArgs(args) {
       opponents.push(...arg.slice("--vs=".length).split(",").map((s) => s.trim()).filter(Boolean));
     } else if (arg === "--view") {
       view = true;
+    } else if (arg === "--cloud" || arg === "--no-open") {
+      // Legacy no-op flags kept for ergonomics during migration.
     } else if (arg === "--save-dir" && args[i + 1]) {
       saveDir = args[++i];
+    } else if (
+      (arg === "--count" ||
+        arg === "--seed" ||
+        arg === "--games" ||
+        arg === "--trace-sample" ||
+        arg === "--seeds") &&
+      args[i + 1]
+    ) {
+      // Consume value flags so they aren't mis-read as file path positionals.
+      i++;
     } else if (arg === "--json") {
       json = true;
     } else if (arg === "--trace") {
       trace = true;
-    } else if (!arg.startsWith("-")) {
+    } else if (!arg.startsWith("-") && !filePath) {
       filePath = arg;
     }
   }
