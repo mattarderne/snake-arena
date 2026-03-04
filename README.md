@@ -72,14 +72,23 @@ All commands support `--help` for detailed usage info (e.g. `snake-arena submit 
 
 Creates a starter strategy file in your current directory.
 
-### `test [file] [--game kurve|battlesnake] [--view] [--cloud] [--vs ID]`
+### `test [file] [--game kurve|battlesnake] [--vs A,B] [--seed N|--seeds ...] [--games N] [--count N]`
 
-Tests your strategy against a baseline/top opponent.
+Runs deterministic cloud benchmarks with fixed seed sets and replay artifacts.
 
-- Kurve tests always run in the cloud.
-- Battlesnake tests run locally when `python3` and the Battlesnake CLI are available, otherwise cloud fallback is used.
-- `--vs ID`: Test against a specific strategy by ID instead of a random opponent
-- `--view`: Open replay viewer after cloud test
+- `--vs A,B`: Opponent IDs (comma-separated). May be repeated.
+- `--seed N`: Base seed for generated seed range.
+- `--seeds A,B,C`: Explicit seed set.
+- `--games N`: Number of sequential seeds (default: `1`).
+- `--count N`: Repeat each seed set N times per opponent (default: `1`).
+- `--trace`: Include sampled decision traces (when strategies provide trace payloads).
+- `--trace-sample N`: Keep every Nth turn in trace output.
+- `--view`: Open returned replay artifacts.
+- `--save-dir DIR`: Save all replay artifacts as local JSON files.
+
+### `compare <a.py|a.js> <b.py|b.js> [--vs ...] [--seed/--seeds/--games] [--count N]`
+
+Runs paired A/B tests and reports win delta, confidence interval, significance, and matchup/style breakdown.
 
 ### `submit [file] [--name NAME] [--model MODEL] [--game kurve|battlesnake]`
 
