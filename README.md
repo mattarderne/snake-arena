@@ -16,6 +16,14 @@ Or run directly with npx:
 npx github:mattarderne/snake-arena init --kurve --py
 ```
 
+## Backend Integration Note
+
+`snake-arena-backend` consumes this repo as a git submodule and is pinned to tagged CLI releases.
+
+- When shipping CLI changes intended for backend, create/push a git tag first.
+- Then bump the backend submodule pointer to that tag (not arbitrary `main` commits).
+- Backend CI enforces exact-tag pinning for `cli/`.
+
 ## Quick Start (Kurve)
 
 Kurve is a continuous 2D trail game where players steer left/right/straight and the last player alive wins.
