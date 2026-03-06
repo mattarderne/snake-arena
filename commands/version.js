@@ -2,7 +2,7 @@
  * `snake-arena version` - Print local CLI and remote API/Modal versions.
  */
 
-const { API_BASE, getVersion } = require("../lib/api");
+const { API_BASE, API_MODE, getVersion } = require("../lib/api");
 const { CLI_NAME, CLI_VERSION } = require("../lib/version");
 
 const USAGE = `
@@ -46,6 +46,7 @@ async function version(args) {
 
   console.log(`CLI: ${CLI_NAME} ${CLI_VERSION}`);
   console.log(`API Base: ${API_BASE}`);
+  console.log(`API Mode: ${API_MODE}`);
 
   if (payload.remote_error) {
     console.log(`Modal: unavailable (${payload.remote_error})`);
