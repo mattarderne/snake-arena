@@ -6,7 +6,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const { API_BASE, submitStrategy, getStatus } = require("../lib/api");
+const { API_BASE, API_MODE, resolveUrl, submitStrategy, getStatus } = require("../lib/api");
 
 const USAGE = `
   Usage: snake-arena submit [file] [flags]
@@ -347,7 +347,7 @@ async function submit(args) {
           process.stdout.write("\r\x1B[K");
           console.log("\n  Submission is still running in the backend.");
           console.log(`  Last status check failed: ${err.message}`);
-          console.log(`  Check status: ${API_BASE}/api/status?job_id=${encodeURIComponent(job_id)}`);
+          console.log(`  Check status: ${resolveUrl("status", `?job_id=${encodeURIComponent(job_id)}`)}`);
           return;
         }
         process.stdout.write(`\r  ${spinChars[spinIdx++ % 4]} Waiting for backend...`);
@@ -368,6 +368,7 @@ async function submit(args) {
       if (job.status === "failed") {
         process.stdout.write("\r\x1B[K");
         console.error(`\n  Error: ${job.error || "Unknown backend error"}`);
+        console.error(`  Backend: ${API_BASE} (${API_MODE})`);
         process.exit(1);
       }
 
@@ -395,7 +396,7 @@ async function submit(args) {
       if (polls >= maxPolls) {
         process.stdout.write("\r\x1B[K");
         console.log("\n  Submission is still running in the backend.");
-        console.log(`  Check status: ${API_BASE}/api/status?job_id=${encodeURIComponent(job_id)}`);
+        console.log(`  Check status: ${resolveUrl("status", `?job_id=${encodeURIComponent(job_id)}`)}`);
         return;
       }
 
@@ -412,6 +413,7 @@ async function submit(args) {
   } catch (err) {
     process.stdout.write("\r\x1B[K");
     console.error(`Submission failed: ${err.message}`);
+    console.error(`Backend: ${API_BASE} (${API_MODE})`);
     process.exit(1);
   }
 }
