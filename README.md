@@ -95,11 +95,13 @@ Test modes:
   - the backend creates a benchmark job and returns `202 { job_id, status }`
   - the CLI polls job status until completion and then prints the final benchmark summary
   - when no `--vs` is provided, the backend uses its default benchmark pack (for example a versioned top-N leaderboard snapshot)
+  - use this when you want useful pre-submit signal, or when you care about how the strategy performs against stronger reference opponents
 - `--quick` mode:
   - synchronous
   - small cheap cases only
   - intended for fast iteration before running a full benchmark
   - backend keeps this path intentionally lightweight
+  - use this when you are checking basic correctness, runtime behavior, or making tight edit/test loops where waiting on a full benchmark would be too slow
 
 Example:
 

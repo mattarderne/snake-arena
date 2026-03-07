@@ -15,7 +15,9 @@ const USAGE = `
 
   Modes:
     default             Benchmark mode: async, returns/queues a benchmark job and polls status
+                        Use this when you want meaningful signal against the benchmark pack.
     --quick             Quick mode: synchronous, small cheap cases only
+                        Use this while iterating quickly on correctness or basic behavior.
 
   Flags:
     --game TYPE         Game type: battlesnake or kurve
