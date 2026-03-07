@@ -1,6 +1,6 @@
 {
   "name": "snake-arena",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "CLI for the Snake Arena public Battlesnake leaderboard",
   "bin": {
     "snake-arena": "./cli.js"

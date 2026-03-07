@@ -337,6 +337,7 @@ async function test(args) {
     if (data.benchmark_pack?.version) {
       console.log(`  Benchmark pack: ${data.benchmark_pack.version}`);
     }
+    console.log("  Hint: use --quick for fast iteration; use the default benchmark mode for stronger signal before compare/submit.");
     data = await waitForBenchmarkJob(data.job_id);
   }
 
