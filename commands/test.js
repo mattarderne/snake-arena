@@ -4,7 +4,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { API_BASE, API_MODE, testStrategy, getReplay } = require("../lib/api");
+const { API_BASE, API_MODE, testStrategy, getReplay, getStatus } = require("../lib/api");
 const { CLI_VERSION } = require("../lib/version");
 const { openReplayViewer, openMatchViewer } = require("../lib/viewer");
 
@@ -16,6 +16,7 @@ const USAGE = `
   Flags:
     --game TYPE         Game type: battlesnake or kurve
     --vs A,B            Opponent IDs (comma-separated). May be repeated.
+    --quick             Run a small synchronous quick test instead of async benchmark mode
     --count N           Repeat each seed set N times per opponent (default: 1)
     --seed N            Base seed (used when --seeds omitted)
     --seeds A,B,C       Explicit seed set
@@ -80,6 +81,7 @@ function parseArgs(args) {
   let saveDir = null;
   let json = false;
   let trace = false;
+  let quick = false;
   const opponents = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -92,6 +94,8 @@ function parseArgs(args) {
       opponents.push(...arg.slice("--vs=".length).split(",").map((s) => s.trim()).filter(Boolean));
     } else if (arg === "--view") {
       view = true;
+    } else if (arg === "--quick") {
+      quick = true;
     } else if (arg === "--cloud" || arg === "--no-open") {
       // Legacy no-op flags kept for ergonomics during migration.
     } else if (arg === "--save-dir" && args[i + 1]) {
@@ -132,6 +136,7 @@ function parseArgs(args) {
     games: parseIntFlag(args, "--games", 1),
     trace,
     traceSample: parseIntFlag(args, "--trace-sample", 1),
+    quick,
     view,
     saveDir,
     json,
@@ -211,6 +216,59 @@ async function saveReplayArtifacts(ids, saveDir) {
   return saved;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeBenchmarkFailure(data) {
+  if (data?.ok === false) return data;
+  const rawError = data?.error;
+  if (typeof rawError === "string") {
+    return { ok: false, error: { code: "BENCHMARK_FAILED", message: rawError } };
+  }
+  if (rawError && typeof rawError === "object") {
+    return { ok: false, error: rawError, versions: data?.versions };
+  }
+  return {
+    ok: false,
+    error: { code: "BENCHMARK_FAILED", message: "Benchmark job failed" },
+    versions: data?.versions,
+  };
+}
+
+async function waitForBenchmarkJob(jobId) {
+  let lastProgress = "";
+
+  while (true) {
+    const response = await getStatus(jobId);
+    const data = response.data;
+
+    if (!data || typeof data !== "object") {
+      return normalizeBenchmarkFailure({ error: "Benchmark status returned malformed data" });
+    }
+
+    if (data.status === "complete") {
+      return data.result || data;
+    }
+    if (data.status === "failed") {
+      return normalizeBenchmarkFailure(data);
+    }
+
+    const completedCases = data.completed_cases || 0;
+    const totalCases = data.total_cases || 0;
+    const summary = data.summary || {};
+    const progress = `  Progress: ${completedCases}/${totalCases} cases | `
+      + `${summary.wins || 0}W-${summary.losses || 0}L-${summary.draws || 0}D`
+      + ` | errors=${summary.non_game_errors || 0}`;
+    if (progress !== lastProgress) {
+      console.log(progress);
+      lastProgress = progress;
+    }
+
+    await sleep(1500);
+  }
+}
+
 async function test(args) {
   if (args.includes("--help") || args.includes("-h")) {
     console.log(USAGE);
@@ -259,17 +317,34 @@ async function test(args) {
     seed: parsed.seed,
     seeds,
     games: parsed.games,
+    mode: parsed.quick ? "quick" : "benchmark",
     trace: parsed.trace,
     traceSample: parsed.traceSample,
     persistReplays: true,
   };
 
   const response = await testStrategy(code, language, game, opts);
-  const data = response.data;
+  let data = response.data;
+
+  if (data && typeof data === "object" && data.async === true && data.job_id) {
+    console.log(`  Queued benchmark job ${data.job_id}`);
+    if (data.benchmark_pack?.version) {
+      console.log(`  Benchmark pack: ${data.benchmark_pack.version}`);
+    }
+    data = await waitForBenchmarkJob(data.job_id);
+  }
 
   if (data?.ok === false) {
     const err = data.error || {};
-    console.error(`Error [${err.code || "UNKNOWN"}]: ${err.message || "Test failed"}`);
+    let detail = "";
+    const retryAfter = response.headers?.["retry-after"];
+    if (response.status === 429 && retryAfter) {
+      const secs = parseInt(retryAfter, 10);
+      if (Number.isFinite(secs) && secs > 0) {
+        detail = ` Retry in about ${secs}s.`;
+      }
+    }
+    console.error(`Error [${err.code || "UNKNOWN"}]: ${(err.message || "Test failed")}${detail}`);
     console.error(`Versions: cli=${CLI_VERSION} modal=${modalVersionFrom(data)} api=${API_BASE} mode=${API_MODE}`);
     process.exit(1);
   }
@@ -286,6 +361,9 @@ async function test(args) {
   const summary = data.summary || {};
   console.log("");
   console.log(`  Versions: cli=${CLI_VERSION} modal=${modalVersionFrom(data)} api=${API_BASE} mode=${API_MODE}`);
+  if (data.benchmark_pack?.version) {
+    console.log(`  Benchmark pack: ${data.benchmark_pack.version}`);
+  }
   console.log(
     `  Summary: ${summary.wins || 0}W-${summary.losses || 0}L-${summary.draws || 0}D`
     + ` | games=${summary.games || 0}`
