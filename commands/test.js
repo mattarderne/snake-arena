@@ -13,10 +13,14 @@ const USAGE = `
 
   Run deterministic benchmark tests in the cloud.
 
+  Modes:
+    default             Benchmark mode: async, returns/queues a benchmark job and polls status
+    --quick             Quick mode: synchronous, small cheap cases only
+
   Flags:
     --game TYPE         Game type: battlesnake or kurve
     --vs A,B            Opponent IDs (comma-separated). May be repeated.
-    --quick             Run a small synchronous quick test instead of async benchmark mode
+    --quick             Synchronous small cheap cases only
     --count N           Repeat each seed set N times per opponent (default: 1)
     --seed N            Base seed (used when --seeds omitted)
     --seeds A,B,C       Explicit seed set

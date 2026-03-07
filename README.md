@@ -88,7 +88,31 @@ Creates a starter strategy file in your current directory.
 
 Runs deterministic cloud benchmarks with fixed seed sets and replay artifacts.
 
+Test modes:
+
+- Default benchmark mode:
+  - asynchronous
+  - the backend creates a benchmark job and returns `202 { job_id, status }`
+  - the CLI polls job status until completion and then prints the final benchmark summary
+  - when no `--vs` is provided, the backend uses its default benchmark pack (for example a versioned top-N leaderboard snapshot)
+- `--quick` mode:
+  - synchronous
+  - small cheap cases only
+  - intended for fast iteration before running a full benchmark
+  - backend keeps this path intentionally lightweight
+
+Example:
+
+```bash
+# Full benchmark mode (default) - async job, CLI polls automatically
+snake-arena test kurve.py --game kurve
+
+# Quick mode - synchronous cheap sentinel matchup
+snake-arena test kurve.py --game kurve --quick
+```
+
 - `--vs A,B`: Opponent IDs (comma-separated). May be repeated.
+- `--quick`: Run the synchronous small-case quick path.
 - `--seed N`: Base seed for generated seed range.
 - `--seeds A,B,C`: Explicit seed set.
 - `--games N`: Number of sequential seeds (default: `1`).
